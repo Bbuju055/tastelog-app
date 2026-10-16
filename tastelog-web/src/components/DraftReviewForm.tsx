@@ -16,7 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { confirmDraft, deleteDraft, getDraft } from "@/lib/api/endpoints";
 import { apiErrorMessage } from "@/lib/useApiErrorMessage";
 import RecipeCard, { RecipeCardValue } from "@/components/RecipeCard";
-import { buildConfirmPatch, draftToCardValue } from "@/lib/drafts/reviewPatch";
+import { buildConfirmPatch, clearedFields, draftToCardValue } from "@/lib/drafts/reviewPatch";
 import type { DraftConfirmRequest, DraftResponse, RecipeDetailResponse } from "@/lib/api/schemas";
 
 type Props = {
@@ -42,6 +42,9 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm
   const initialCardValue = useMemo<RecipeCardValue>(() => draftToCardValue(draft), [draft]);
 
   const [cardValue, setCardValue] = useState<RecipeCardValue>(() => initialCardValue);
+  // Confirm cannot clear a field the draft had a value for; refuse rather than silently keep it.
+  const [clearedMsg, setClearedMsg] = useState<string | null>(null);
+  const shownError = clearedMsg ?? errorMsg;
 
   return (
     <div className="space-y-4">
@@ -50,22 +53,34 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm
         confidenceLabel={typeof draft.confidence_score === "number" ? String(draft.confidence_score) : undefined}
         imagePreviewUrl={null}
         value={cardValue}
-        onChange={setCardValue}
+        onChange={(next) => {
+          setCardValue(next);
+          setClearedMsg(null);
+        }}
         disabled={disabled}
         onCancel={onCancel}
         onTryAgain={() => {
           setCardValue(initialCardValue);
+          setClearedMsg(null);
           onTryAgain();
         }}
-        onLooksGood={() => onConfirm(buildConfirmPatch(draft, cardValue))}
+        onLooksGood={() => {
+          const cleared = clearedFields(draft, cardValue);
+          if (cleared.length > 0) {
+            setClearedMsg(`Confirm can't clear ${cleared.join(", ")}. Enter a value or restore the original.`);
+            return;
+          }
+          setClearedMsg(null);
+          onConfirm(buildConfirmPatch(draft, cardValue));
+        }}
       />
 
-      {errorMsg ? (
+      {shownError ? (
         <div
           className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
           role="alert"
         >
-          {errorMsg}
+          {shownError}
         </div>
       ) : null}
 

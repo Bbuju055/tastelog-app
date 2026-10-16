@@ -554,6 +554,29 @@ class TestNormalizeEditedIngredients:
         out = normalize_edited_ingredients(draft["ingredients"], edited)
         assert out[0] == edited[0]
 
+    def test_web_adapter_delete_edit_append_at_equal_count_keeps_no_stale_structure(self):
+        """Contract with tastelog-web reviewPatch.ts: edited and new rows arrive
+        unstructured (name == raw_text), untouched rows verbatim. Deleting the
+        first row, editing the second and appending one keeps the count equal,
+        so the positional branch runs; it must not pair stale structure onto
+        the edited row."""
+        draft = _draft([[1], []])  # [2 cups flour, salt to taste]
+        edited = [
+            {"quantity": None, "unit": None, "name": "2 tsp salt", "prep": None, "raw_text": "2 tsp salt"},
+            {"quantity": None, "unit": None, "name": "pepper", "prep": None, "raw_text": "pepper"},
+        ]
+        out = normalize_edited_ingredients(draft["ingredients"], edited)
+        assert out == edited
+
+    def test_web_adapter_untouched_row_keeps_structure_after_a_delete(self):
+        """Same contract, count mismatch: the surviving untouched row is sent
+        verbatim and keeps its structured fields; the new row stays unstructured."""
+        draft = _draft([[1], []])
+        salt = dict(draft["ingredients"][1])
+        new = {"quantity": None, "unit": None, "name": "pepper", "prep": None, "raw_text": "pepper"}
+        out = normalize_edited_ingredients(draft["ingredients"], [salt, new])
+        assert out == [salt, new]
+
     def test_count_change_identical_row_passes_through(self):
         """Count change alone: a surviving row byte-identical to an
         original keeps its structured fields."""
