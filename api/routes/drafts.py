@@ -31,6 +31,11 @@ from api.core.exceptions import (
 )
 from api.core.parser import get_default_config, parse_recipe_image, parse_recipe_images
 from api.core.recipes import get_recipe, upload_image
+from api.core.token_auth import (
+    RateLimitExceededError,
+    RateLimitUnavailableError,
+    check_and_record_rate_limit,
+)
 from api.core.step_mapping import (
     apply_step_mapping,
     canonicalize_parsed_recipe,
@@ -122,7 +127,24 @@ def _validate_url(url: str) -> str:
     url = url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Invalid URL — must start with http:// or https://")
-    return normalize_url(url)
+    try:
+        return normalize_url(url)
+    except ValueError:  # malformed IPv6 brackets or port
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+
+def _enforce_capture_rate_limit(user_id: UUID, db: Client) -> None:
+    """Per-user sliding window shared by both draft capture routes.
+
+    Reuses the capture-token limiter and its table; the key column is
+    ``token_hash`` but it is free text, so the key here is ``user:<uuid>``.
+    """
+    try:
+        check_and_record_rate_limit(f"user:{user_id}", supabase=db)
+    except RateLimitExceededError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    except RateLimitUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 def _handle_url_capture(
@@ -133,6 +155,7 @@ def _handle_url_capture(
 ) -> DraftResponse:
     """Shared logic for URL capture (used by both capture-url and capture endpoints)."""
     normalized = _validate_url(url)
+    _enforce_capture_rate_limit(user_id, db)
 
     # Duplicate check
     existing = find_existing_by_url(normalized, user_id=user_id, supabase=db, logger=logger)
@@ -261,6 +284,10 @@ async def capture_draft_endpoint(
                 status_code=400,
                 detail=f"Invalid file type: {f.content_type}. Allowed: {sorted(ALLOWED_CONTENT_TYPES)}",
             )
+
+    # Count and type checks above are free; limit before copying up to
+    # MAX_UPLOAD_SIZE into memory, uploading, or calling the model.
+    _enforce_capture_rate_limit(user_id, db)
 
     tmp_paths: list[str] = []
     storage_keys: list[str] = []

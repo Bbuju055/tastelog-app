@@ -81,7 +81,7 @@ All three run in [CI](.github/workflows/ci.yml) on every push. Lint and strict T
 ## Things worth reading
 
 - `api/core/jwt.py` JWKS fetch with caching and key-rotation retry; RS256 and ES256.
-- `api/core/idempotency.py` Postgres-backed idempotency keys on the Shortcuts capture route (`/api/recipes/capture`), so a retried upload never creates two recipes. The share extension's draft route does not have this yet.
+- `api/core/idempotency.py` Postgres-backed idempotency keys on the Shortcuts capture route (`/api/recipes/capture`): a retry with the same key replays the recorded response instead of creating another recipe. A retry that races the first attempt before its response is recorded can still duplicate, and the share extension's draft route has no key yet.
 - `api/core/token_auth.py` capture tokens: SHA-256 at rest, scoped, revocable, rate-limited.
 - `tastelog-web/src/lib/ingredients/` the exact-fraction scaling engine and its parser for inputs like "1 1/2 cups".
 - `tastelog-mobile/ios/TastelogShareExtension/` the Swift share extension, and `scripts/CaptureFailureMapperContract.swift`, a contract test for its error mapping.

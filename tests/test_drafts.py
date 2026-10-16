@@ -26,24 +26,40 @@ FAKE_DRAFT_ID = UUID("00000000-0000-0000-0000-000000000abc")
 
 
 @pytest.fixture()
-def capture_client(app):
-    """Test client with capture auth bypassed.
+def capture_client(app, monkeypatch):
+    """Test client with capture auth bypassed and no database.
 
     The capture endpoint uses get_user_id_jwt_or_capture_token (not
     get_current_user_id), so this fixture overrides the correct dependency.
+    The db is a stub, the rate limiter passes, and storage upload fails with
+    a StorageError, so a request that clears validation ends in exactly 500.
     """
+    import api.routes.drafts as drafts_module
+    from api.core.exceptions import StorageError
+    from api.dependencies import get_db
 
     def _fake_user_id():
         return FAKE_USER_ID
 
+    upload_calls: list[dict] = []
+
+    def _upload_fails(*a, **k):
+        upload_calls.append(k)
+        raise StorageError("no storage in tests", code="UPLOAD_FAILED")
+
+    monkeypatch.setattr(drafts_module, "check_and_record_rate_limit", lambda *a, **k: None)
+    monkeypatch.setattr(drafts_module, "upload_image", _upload_fails)
     app.dependency_overrides[get_user_id_jwt_or_capture_token] = _fake_user_id
+    app.dependency_overrides[get_db] = lambda: object()
     try:
         from fastapi.testclient import TestClient
 
         with TestClient(app) as c:
+            c.upload_calls = upload_calls
             yield c
     finally:
         app.dependency_overrides.pop(get_user_id_jwt_or_capture_token, None)
+        app.dependency_overrides.pop(get_db, None)
 
 
 # =============================================================================
@@ -142,11 +158,12 @@ def test_capture_mixed_valid_invalid_types_returns_400(capture_client):
 
 
 def test_capture_single_image_passes_validation(capture_client):
-    """Single image should pass type/count validation (fails downstream — no real Supabase)."""
+    """Single image should pass type/count validation (fails at the stubbed storage upload)."""
     files = [("image", ("test.jpg", b"fake jpeg bytes", "image/jpeg"))]
     resp = capture_client.post("/api/drafts/capture", files=files)
-    # Validation passed — failure is downstream (storage/parse)
-    assert resp.status_code >= 500
+    # Validation passed — the 500 is our stubbed storage failure, not an accident
+    assert resp.status_code == 500
+    assert len(capture_client.upload_calls) == 1
 
 
 def test_capture_three_images_passes_validation(capture_client):
@@ -156,7 +173,8 @@ def test_capture_three_images_passes_validation(capture_client):
         for i in range(3)
     ]
     resp = capture_client.post("/api/drafts/capture", files=files)
-    assert resp.status_code >= 500
+    assert resp.status_code == 500
+    assert len(capture_client.upload_calls) == 1  # the first upload fails and the request stops
 
 
 def test_capture_five_images_passes_validation(capture_client):
@@ -166,7 +184,14 @@ def test_capture_five_images_passes_validation(capture_client):
         for i in range(5)
     ]
     resp = capture_client.post("/api/drafts/capture", files=files)
-    assert resp.status_code >= 500
+    assert resp.status_code == 500
+    assert len(capture_client.upload_calls) == 1
+
+
+def test_capture_malformed_url_returns_400(capture_client):
+    resp = capture_client.post("/api/drafts/capture", data={"url": "http://[::1"})
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid URL"
 
 
 def test_capture_file_too_large_returns_413(capture_client):
@@ -391,13 +416,16 @@ class _PS1FakeDb:
 
 
 @_pytest_ps1.fixture
-def provider_contract_client(app):
+def provider_contract_client(app, monkeypatch):
     """Capture-auth + fake-db client for PROVIDER-S1 contract tests."""
+    import api.routes.drafts as drafts_module
     from api.dependencies import get_user_id_jwt_or_capture_token
 
     def _fake_user_id():
         return "00000000-0000-0000-0000-000000000001"
 
+    # The fake db has no tables; the rate limiter is exercised in its own tests.
+    monkeypatch.setattr(drafts_module, "check_and_record_rate_limit", lambda *a, **k: None)
     fake_db = _PS1FakeDb()
     app.dependency_overrides[get_user_id_jwt_or_capture_token] = _fake_user_id
     app.dependency_overrides[_ps1_get_current_user_id] = _fake_user_id
@@ -645,6 +673,106 @@ class TestUrlCaptureErrorContract:
         resp = provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
         assert resp.status_code == status
         assert calls["create_draft"] == 0
+
+
+# =============================================================================
+# Rate limit on both draft capture routes (per user, shared sliding window)
+# =============================================================================
+
+from api.core.token_auth import (
+    RateLimitExceededError as _RL_Exceeded,
+    RateLimitUnavailableError as _RL_Unavailable,
+)
+
+_RL_USER_KEY = "user:00000000-0000-0000-0000-000000000001"
+
+
+def _patch_rate_limit(monkeypatch, effect=None):
+    """Replace the limiter; returns the list of keys it was called with."""
+    import api.routes.drafts as drafts_module
+
+    keys: list[str] = []
+
+    def _limiter(key, **kwargs):
+        keys.append(key)
+        if effect is not None:
+            raise effect
+
+    monkeypatch.setattr(drafts_module, "check_and_record_rate_limit", _limiter)
+    return keys
+
+
+class TestDraftCaptureRateLimit:
+    _URL = {"url": "https://example.com/recipe"}
+
+    def test_url_route_exceeded_maps_429_and_creates_no_draft(
+        self, provider_contract_client, monkeypatch
+    ):
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_fake_draft_row())
+        keys = _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        resp = provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
+        assert resp.status_code == 429
+        assert keys == [_RL_USER_KEY]
+        assert calls["create_draft"] == 0
+
+    def test_url_route_unavailable_maps_503(self, provider_contract_client, monkeypatch):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_fake_draft_row())
+        _patch_rate_limit(monkeypatch, _RL_Unavailable("down", code="RATE_LIMIT_UNAVAILABLE"))
+        resp = provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
+        assert resp.status_code == 503
+
+    def test_url_only_form_capture_is_limited_once(self, provider_contract_client, monkeypatch):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_fake_draft_row())
+        keys = _patch_rate_limit(monkeypatch)
+        resp = provider_contract_client.post("/api/drafts/capture", data=self._URL)
+        assert resp.status_code == 200
+        assert keys == [_RL_USER_KEY]
+
+    def test_photo_route_exceeded_maps_429_before_upload(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+
+        uploads: list[str] = []
+        monkeypatch.setattr(
+            drafts_module, "upload_image", lambda *a, **k: uploads.append("x") or "k"
+        )
+        keys = _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        resp = _ps1_post_images(provider_contract_client, count=2)
+        assert resp.status_code == 429
+        assert keys == [_RL_USER_KEY]
+        assert uploads == []
+
+    def test_photo_route_validation_runs_before_rate_limit(
+        self, provider_contract_client, monkeypatch
+    ):
+        keys = _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("bad.txt", b"x", "text/plain"))],
+        )
+        assert resp.status_code == 400
+        assert keys == []
+
+    def test_photo_route_rate_limit_runs_before_file_bytes_are_read(
+        self, provider_contract_client, monkeypatch
+    ):
+        _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        big = b"x" * (11 * 1024 * 1024)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture", files=[("image", ("big.jpg", big, "image/jpeg"))]
+        )
+        assert resp.status_code == 429  # not 413: an over-limit client gets no byte copying
+
+    def test_both_routes_share_one_window_per_user(self, provider_contract_client, monkeypatch):
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_fake_draft_row())
+        monkeypatch.setattr(drafts_module, "upload_image", lambda *a, **k: "k")
+        keys = _patch_rate_limit(monkeypatch)
+        provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
+        _ps1_post_images(provider_contract_client)
+        assert keys == [_RL_USER_KEY, _RL_USER_KEY]
 
 
 # =============================================================================
