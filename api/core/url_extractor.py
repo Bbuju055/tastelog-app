@@ -17,6 +17,7 @@ import logging
 import re
 import socket
 import time
+import zlib
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from uuid import UUID
@@ -134,10 +135,13 @@ def normalize_url(url: str) -> str:
 
 _MAX_REDIRECTS = 5
 _MAX_BODY_BYTES = 5 * 1024 * 1024
+_MAX_COMPRESSED_MEMBERS = 16  # concatenated gzip members; empty ones cost CPU, not budget
 _FETCH_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
 _FETCH_HEADERS = {
     "User-Agent": "Tastelog/1.0 (recipe parser)",
     "Accept": "text/html",
+    # Ask for an uncompressed body so the size cap bounds what we allocate.
+    "Accept-Encoding": "identity",
 }
 
 
@@ -167,9 +171,13 @@ def _pin_to_public_address(url: str) -> tuple[httpx.URL, dict[str, str], dict[st
 
     Returns (url_to_request, extra_headers, request_extensions).
     """
-    parsed = urlparse(url)
-    host = parsed.hostname
-    if parsed.scheme not in ("http", "https") or not host:
+    try:
+        parsed = urlparse(url)  # malformed IPv6 brackets raise
+        port = parsed.port  # out-of-range or non-numeric ports raise
+        if parsed.scheme not in ("http", "https") or not parsed.hostname:
+            raise ValueError("missing scheme or host")
+        host = parsed.hostname.encode("idna").decode("ascii")  # Host/SNI must be ASCII
+    except ValueError:  # UnicodeError is a ValueError
         raise URLFetchError("Invalid URL", code="INVALID_URL")
 
     try:
@@ -180,36 +188,113 @@ def _pin_to_public_address(url: str) -> tuple[httpx.URL, dict[str, str], dict[st
     if not all(_is_public_address(a) for a in addresses):
         raise URLFetchError("URL points to a non-public address", code="BLOCKED_ADDRESS")
 
+    def with_port(authority: str) -> str:
+        return authority if port is None else f"{authority}:{port}"
+
     address = addresses[0]
-    netloc = f"[{address}]" if ":" in address else address
-    if parsed.port is not None:
-        netloc = f"{netloc}:{parsed.port}"
+    netloc = with_port(f"[{address}]" if ":" in address else address)
     pinned = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, ""))
 
-    host_header = host if parsed.port is None else f"{host}:{parsed.port}"
+    host_header = with_port(f"[{host}]" if ":" in host else host)
     extensions: dict[str, Any] = {"sni_hostname": host} if parsed.scheme == "https" else {}
-    return httpx.URL(pinned), {"Host": host_header}, extensions
+    try:
+        return httpx.URL(pinned), {"Host": host_header}, extensions
+    except httpx.InvalidURL:  # httpx's own limits, e.g. a 64 KiB path; not an HTTPError
+        raise URLFetchError("Invalid URL", code="INVALID_URL")
+
+
+def _inflate_bounded(raw: bytes, *, allow_raw_deflate: bool) -> bytes:
+    """Inflate every gzip/zlib member of ``raw`` within _MAX_BODY_BYTES.
+
+    zlib stops producing output at the budget, so a small compressed body
+    cannot expand past the cap in memory. A stream that ends before its
+    trailer is rejected rather than silently truncated. ``Content-Encoding:
+    deflate`` may be a raw deflate stream in the wild; that form is tried
+    when the zlib/gzip header check fails, as httpx itself does.
+    """
+    header_choices = (zlib.MAX_WBITS | 32,) + ((-zlib.MAX_WBITS,) if allow_raw_deflate else ())
+    out = bytearray()
+    data = raw
+    members = 0
+    while data:
+        members += 1
+        if members > _MAX_COMPRESSED_MEMBERS:
+            raise URLFetchError("Could not decode page", code="BAD_ENCODING")
+        for wbits in header_choices:
+            decoder = zlib.decompressobj(wbits=wbits)
+            try:
+                member = decoder.decompress(data, _MAX_BODY_BYTES + 1 - len(out))
+                break
+            except zlib.error:
+                continue
+        else:
+            raise URLFetchError("Could not decode page", code="BAD_ENCODING")
+        out += member
+        if len(out) > _MAX_BODY_BYTES:
+            raise URLFetchError("Page too large", code="TOO_LARGE")
+        if not decoder.eof:
+            raise URLFetchError("Could not decode page", code="BAD_ENCODING")  # truncated
+        data = decoder.unused_data  # a following gzip member, or nothing
+    return bytes(out)
+
+
+def _read_html_body(response: httpx.Response) -> str:
+    """Read at most _MAX_BODY_BYTES, before and after decompression.
+
+    Raw bytes are capped as they stream in, and a compressed body is
+    inflated by _inflate_bounded (httpx's own iter_bytes inflates unbounded).
+    """
+    declared = response.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > _MAX_BODY_BYTES:
+        raise URLFetchError("Page too large", code="TOO_LARGE")
+
+    raw = bytearray()
+    for chunk in response.iter_raw():
+        if len(raw) + len(chunk) > _MAX_BODY_BYTES:
+            raise URLFetchError("Page too large", code="TOO_LARGE")
+        raw.extend(chunk)
+
+    encoding = response.headers.get("content-encoding", "identity").strip().lower()
+    if encoding in ("", "identity"):
+        body = bytes(raw)
+    elif encoding in ("gzip", "x-gzip", "deflate"):
+        body = _inflate_bounded(bytes(raw), allow_raw_deflate=encoding == "deflate")
+    else:
+        raise URLFetchError(f"Unsupported content encoding: {encoding}", code="BAD_ENCODING")
+
+    return body.decode(response.charset_encoding or "utf-8", errors="replace")
 
 
 def fetch_url(url: str, *, transport: httpx.BaseTransport | None = None) -> str:
     """Fetch URL content as HTML string.
 
     Follows at most 5 redirects, re-validating every hop against the SSRF
-    guard, and reads at most 5 MiB of body.
+    guard, and reads at most 5 MiB of body. Environment proxies are ignored:
+    a tunnelled connection would verify TLS against the pinned address.
 
     Raises URLFetchError with specific codes on failure.
     """
     try:
-        with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=False, transport=transport) as client:
+        with httpx.Client(
+            timeout=_FETCH_TIMEOUT, follow_redirects=False, transport=transport, trust_env=False
+        ) as client:
             current = url
-            for _ in range(_MAX_REDIRECTS + 1):
-                pinned, headers, extensions = _pin_to_public_address(current)
+            for hop in range(_MAX_REDIRECTS + 1):
+                try:
+                    pinned, headers, extensions = _pin_to_public_address(current)
+                except URLFetchError as e:
+                    if hop and e.code == "INVALID_URL":  # the upstream sent it, not the client
+                        raise URLFetchError("Malformed redirect", code="BAD_REDIRECT")
+                    raise
                 with client.stream(
                     "GET", pinned, headers={**_FETCH_HEADERS, **headers}, extensions=extensions
                 ) as response:
                     location = response.headers.get("location")
                     if response.is_redirect and location:
-                        current = urljoin(current, location)
+                        try:
+                            current = urljoin(current, location)
+                        except ValueError:
+                            raise URLFetchError("Malformed redirect", code="BAD_REDIRECT")
                         continue
 
                     if response.status_code != 200:
@@ -225,16 +310,14 @@ def fetch_url(url: str, *, transport: httpx.BaseTransport | None = None) -> str:
                             code="NON_HTML",
                         )
 
-                    body = bytearray()
-                    for chunk in response.iter_bytes():
-                        body.extend(chunk)
-                        if len(body) > _MAX_BODY_BYTES:
-                            raise URLFetchError("Page too large", code="TOO_LARGE")
-                    return bytes(body).decode(response.charset_encoding or "utf-8", errors="replace")
+                    return _read_html_body(response)
 
             raise URLFetchError("Too many redirects", code="REDIRECT_LOOP")
     except httpx.TimeoutException:
         raise URLFetchError("Page took too long to load", code="TIMEOUT")
+    except httpx.RemoteProtocolError:
+        # httpx validates the Location header even with follow_redirects=False.
+        raise URLFetchError("Upstream sent an invalid response", code="BAD_RESPONSE")
     except httpx.ConnectError as e:
         msg = str(e).lower()
         if "ssl" in msg or "certificate" in msg:

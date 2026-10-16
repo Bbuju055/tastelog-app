@@ -1,8 +1,10 @@
 """Tests for api.core.url_extractor — pure functions + stubbed-client structuring
 (no network, no real Claude)."""
 
+import gzip
 import json
 import logging
+import zlib
 from unittest.mock import patch
 
 import anthropic
@@ -899,6 +901,25 @@ class TestTextFallbackCanonicalization:
 
 _PUBLIC_IP = "93.184.216.34"
 _HTML_HEADERS = {"content-type": "text/html; charset=utf-8"}
+_MAX_RAW_FOR_TEST = 1024 * 1024  # a bomb must be small on the wire to prove the decoder bound
+
+
+def _html(body: bytes, status: int = 200, **headers: str) -> httpx.Response:
+    """A response whose body is still unread, as a real network response is."""
+    return httpx.Response(status, headers={**_HTML_HEADERS, **headers}, stream=httpx.ByteStream(body))
+
+
+class _CountingStream(httpx.SyncByteStream):
+    """Response body that records how many chunks the reader actually pulled."""
+
+    def __init__(self, chunks: list[bytes]):
+        self._chunks = chunks
+        self.yielded = 0
+
+    def __iter__(self):
+        for chunk in self._chunks:
+            self.yielded += 1
+            yield chunk
 
 
 def _resolver(table: dict[str, list[str]]):
@@ -922,7 +943,7 @@ class TestFetchUrlSsrfGuard:
 
         def handler(request: httpx.Request) -> httpx.Response:
             calls.append(request)
-            return httpx.Response(200, headers=_HTML_HEADERS, text="<html></html>")
+            return _html(b"<html></html>")
 
         with pytest.raises(URLFetchError) as exc:
             self._fetch("http://10.0.0.1/recipe", handler, {})
@@ -954,7 +975,7 @@ class TestFetchUrlSsrfGuard:
 
         def handler(request: httpx.Request) -> httpx.Response:
             seen.append(request)
-            return httpx.Response(200, headers=_HTML_HEADERS, text="<html>ok</html>")
+            return _html(b"<html>ok</html>")
 
         html = self._fetch("https://example.com/recipe?x=1", handler, {"example.com": [_PUBLIC_IP]})
         assert html == "<html>ok</html>"
@@ -963,6 +984,7 @@ class TestFetchUrlSsrfGuard:
         assert req.url.host == _PUBLIC_IP
         assert req.url.path == "/recipe" and req.url.query == b"x=1"
         assert req.headers["host"] == "example.com"
+        assert req.headers["accept-encoding"] == "identity"
         assert req.extensions["sni_hostname"] == "example.com"
 
     def test_redirect_from_public_to_private_is_blocked(self):
@@ -993,7 +1015,7 @@ class TestFetchUrlSsrfGuard:
             seen.append((request.headers["host"], request.url.path))
             if request.url.path == "/a":
                 return httpx.Response(301, headers={"location": "/b"})
-            return httpx.Response(200, headers=_HTML_HEADERS, text="<html>b</html>")
+            return _html(b"<html>b</html>")
 
         html = self._fetch("https://example.com/a", handler, {"example.com": [_PUBLIC_IP]})
         assert html == "<html>b</html>"
@@ -1011,17 +1033,180 @@ class TestFetchUrlSsrfGuard:
         assert exc.value.code == "REDIRECT_LOOP"
         assert len(hops) == 6  # initial request + 5 redirects, then stop
 
-    def test_oversize_body_is_rejected_without_buffering_everything(self):
-        def body():
-            for _ in range(8):
-                yield b"x" * (1024 * 1024)
+    def test_oversize_body_stops_streaming_at_the_cap(self):
+        stream = _CountingStream([b"x" * (1024 * 1024)] * 8)
 
         def handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(200, headers=_HTML_HEADERS, stream=httpx.ByteStream(b"".join(body())))
+            return httpx.Response(200, headers=_HTML_HEADERS, stream=stream)
 
         with pytest.raises(URLFetchError) as exc:
             self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
         assert exc.value.code == "TOO_LARGE"
+        assert stream.yielded == 6  # 5 MiB accepted, the 6th chunk is refused, the rest never read
+
+    def test_declared_oversize_content_length_is_rejected_before_reading(self):
+        stream = _CountingStream([b"x"])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            headers = {**_HTML_HEADERS, "content-length": str(6 * 1024 * 1024)}
+            return httpx.Response(200, headers=headers, stream=stream)
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "TOO_LARGE"
+        assert stream.yielded == 0
+
+    def test_gzip_body_is_decoded(self):
+        payload = gzip.compress(b"<html>zipped</html>")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(payload, **{"content-encoding": "gzip"})
+
+        html = self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert html == "<html>zipped</html>"
+
+    def test_gzip_bomb_is_rejected_by_the_bounded_decoder(self):
+        bomb = gzip.compress(b"\0" * (64 * 1024 * 1024))  # ~64 KiB compressed, 64 MiB inflated
+        assert len(bomb) < _MAX_RAW_FOR_TEST
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(bomb, **{"content-encoding": "gzip"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "TOO_LARGE"
+
+    def test_truncated_gzip_is_rejected_not_silently_cut_short(self):
+        payload = gzip.compress(b"<html>" + b"x" * 4096 + b"</html>")[:-8]  # trailer missing
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(payload, **{"content-encoding": "gzip"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "BAD_ENCODING"
+
+    def test_multi_member_gzip_is_decoded_in_full(self):
+        payload = gzip.compress(b"<html>one") + gzip.compress(b" two</html>")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(payload, **{"content-encoding": "gzip"})
+
+        html = self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert html == "<html>one two</html>"
+
+    def test_too_many_gzip_members_are_rejected_even_when_empty(self):
+        # Empty members decode to nothing, so only a member cap bounds the CPU spent on them.
+        payload = gzip.compress(b"") * 17
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(payload, **{"content-encoding": "gzip"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "BAD_ENCODING"
+
+    def test_multi_member_gzip_bomb_is_bounded_cumulatively(self):
+        member = gzip.compress(b"\0" * (3 * 1024 * 1024))  # 3 MiB each; two exceed the 5 MiB cap
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(member + member, **{"content-encoding": "gzip"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "TOO_LARGE"
+
+    @pytest.mark.parametrize(
+        "payload",
+        [zlib.compress(b"<html>deflate</html>"), zlib.compress(b"<html>deflate</html>")[2:-4]],
+        ids=["zlib-wrapped", "raw-deflate"],
+    )
+    def test_deflate_bodies_are_decoded(self, payload: bytes):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(payload, **{"content-encoding": "deflate"})
+
+        html = self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert html == "<html>deflate</html>"
+
+    def test_overlong_path_is_invalid_not_a_crash(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not connect")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/" + "a" * 70_000, handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "INVALID_URL"
+
+    def test_unsupported_content_encoding_is_rejected(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(b"\x00", **{"content-encoding": "br"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "BAD_ENCODING"
+
+    @pytest.mark.parametrize("url", ["http://[::1/", "http://example.com:99999/", "http://example.com:abc/"])
+    def test_malformed_url_is_invalid_not_a_crash(self, url: str):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not connect")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch(url, handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "INVALID_URL"
+
+    @pytest.mark.parametrize(
+        "location,code",
+        [
+            ("http://[::1", "BAD_RESPONSE"),  # httpx rejects it while building next_request
+            ("http://example.com:99999/", "BAD_REDIRECT"),  # httpx accepts, urllib rejects the port
+        ],
+    )
+    def test_malformed_redirect_location_is_the_upstreams_fault(self, location: str, code: str):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302, headers={"location": location})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == code
+
+    def test_unicode_hostname_is_resolved_and_sent_as_punycode(self):
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return _html(b"<html>ok</html>")
+
+        self._fetch("https://bücher.example/", handler, {"xn--bcher-kva.example": [_PUBLIC_IP]})
+        assert seen[0].headers["host"] == "xn--bcher-kva.example"
+        assert seen[0].extensions["sni_hostname"] == "xn--bcher-kva.example"
+
+    def test_ipv6_literal_gets_bracketed_host_header_and_port(self):
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return _html(b"<html>ok</html>")
+
+        self._fetch("http://[2606:4700::1111]:8080/x", handler, {})
+        assert seen[0].url.host == "2606:4700::1111"
+        assert seen[0].url.port == 8080
+        assert seen[0].headers["host"] == "[2606:4700::1111]:8080"
+
+    def test_environment_proxies_are_ignored(self, monkeypatch):
+        monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+        seen: dict = {}
+        real_client = httpx.Client
+
+        def spy(**kwargs):
+            seen.update(kwargs)
+            return real_client(**kwargs)
+
+        monkeypatch.setattr(httpx, "Client", spy)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return _html(b"<html>ok</html>")
+
+        self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert seen["trust_env"] is False
 
     def test_unsupported_scheme_is_rejected(self):
         def handler(request: httpx.Request) -> httpx.Response:
