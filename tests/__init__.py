@@ -1,0 +1,1 @@
+"""Tastelog test suite."""

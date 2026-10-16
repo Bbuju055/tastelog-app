@@ -1,0 +1,45 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+hcov/
+
+# Build/Deploy
+dist/
+build/
+*.egg-info/
+
+# Personal docs
+DECISIONS.md
+SESSION_LOG.md
+
+# Python venv (scripts/test-api.sh creates api/.venv)
+.venv/

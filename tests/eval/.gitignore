@@ -1,0 +1,3 @@
+# Eval run artifacts — non-deterministic, reproducible from the harness.
+runs/
+__pycache__/

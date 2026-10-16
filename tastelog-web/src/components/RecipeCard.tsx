@@ -1,0 +1,357 @@
+// src/components/RecipeCard.tsx
+"use client";
+
+/**
+ * RecipeCard (Draft Review UI)
+ *
+ * Controlled component:
+ * - Parent owns `value`
+ * - Card emits `onChange(value)` on edits
+ *
+ * Critical rule:
+ * - This component does NOT persist anything.
+ */
+
+import { useMemo, useState } from "react";
+
+// shadcn/ui
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+
+export type IngredientLine = {
+  id: string;
+  text: string;
+};
+
+export type StepLine = {
+  id: string;
+  text: string;
+};
+
+export type RecipeCardValue = {
+  title: string;
+  servings: string; // string to allow partial input
+  prep: string;
+  cook: string;
+  ingredients: IngredientLine[];
+  steps: StepLine[];
+};
+
+export type RecipeCardProps = {
+  heading?: string; // "Review Recipe"
+  confidenceLabel?: string; // right-pill label
+  imagePreviewUrl?: string | null;
+
+  value: RecipeCardValue;
+  onChange: (next: RecipeCardValue) => void;
+
+  onCancel: () => void;
+  onTryAgain: () => void;
+  onLooksGood: () => void;
+
+  disabled?: boolean;
+};
+
+function nextId(prefix: string) {
+  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+}
+
+export default function RecipeCard({
+  heading = "Review Recipe",
+  confidenceLabel,
+  imagePreviewUrl,
+  value,
+  onChange,
+  onCancel,
+  onTryAgain,
+  onLooksGood,
+  disabled,
+}: RecipeCardProps) {
+  // UI-only check state for ingredients (not persisted)
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+
+  const checkedCount = useMemo(() => {
+    let n = 0;
+    for (const ing of value.ingredients) {
+      if (checked[ing.id]) n += 1;
+    }
+    return n;
+  }, [checked, value.ingredients]);
+
+  function setField<K extends keyof RecipeCardValue>(key: K, next: RecipeCardValue[K]) {
+    onChange({ ...value, [key]: next });
+  }
+
+  function updateIngredient(id: string, text: string) {
+    setField(
+      "ingredients",
+      value.ingredients.map((i) => (i.id === id ? { ...i, text } : i))
+    );
+  }
+
+  function addIngredient() {
+    setField("ingredients", [...value.ingredients, { id: nextId("ing"), text: "" }]);
+  }
+
+  function removeIngredient(id: string) {
+    setField(
+      "ingredients",
+      value.ingredients.filter((i) => i.id !== id)
+    );
+    setChecked((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+  }
+
+  function toggleIngredient(id: string) {
+    setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function updateStep(id: string, text: string) {
+    setField(
+      "steps",
+      value.steps.map((s) => (s.id === id ? { ...s, text } : s))
+    );
+  }
+
+  function addStep() {
+    setField("steps", [...value.steps, { id: nextId("step"), text: "" }]);
+  }
+
+  function removeStep(id: string) {
+    setField(
+      "steps",
+      value.steps.filter((s) => s.id !== id)
+    );
+  }
+
+  return (
+    <Card className="border-neutral-200 shadow-sm">
+      {/* Header */}
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-neutral-200 py-4">
+        {/* Micro-pass: apply editorial display font to heading only */}
+        <div className="font-display text-base leading-snug tracking-tight">{heading}</div>
+
+        {confidenceLabel ? (
+          <div className="rounded-full border border-neutral-300 bg-neutral-50 px-2.5 py-1 text-xs text-neutral-700">
+            {confidenceLabel}
+          </div>
+        ) : (
+          <div className="text-xs text-neutral-500" aria-hidden="true">
+            &nbsp;
+          </div>
+        )}
+      </CardHeader>
+
+      {/* Body */}
+      <CardContent className="px-5 py-5">
+        <div className="grid gap-6 md:grid-cols-[240px_1fr]">
+          {/* Image Preview */}
+          <div className="space-y-2">
+            <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+              <div className="aspect-[4/3]">
+                {imagePreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Recipe preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
+                    Image Preview
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="text-[11px] text-neutral-500">
+              {checkedCount > 0
+                ? `${checkedCount} ingredient${checkedCount === 1 ? "" : "s"} checked (UI only)`
+                : " "}
+            </div>
+          </div>
+
+          {/* Main Fields */}
+          <div className="space-y-6">
+            {/* Title */}
+            <div className="grid gap-2 md:grid-cols-[80px_1fr] md:items-center">
+              <div className="text-sm font-medium text-neutral-700">Title:</div>
+              <Input
+                value={value.title}
+                onChange={(e) => setField("title", e.target.value)}
+                disabled={disabled}
+              />
+            </div>
+
+            {/* Meta */}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="servings">
+                  Servings
+                </Label>
+                <Input
+                  id="servings"
+                  inputMode="numeric"
+                  value={value.servings}
+                  onChange={(e) => setField("servings", e.target.value)}
+                  disabled={disabled}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="prep">
+                  Prep
+                </Label>
+                <Input
+                  id="prep"
+                  value={value.prep}
+                  onChange={(e) => setField("prep", e.target.value)}
+                  disabled={disabled}
+                  placeholder="e.g. 10 min"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs" htmlFor="cook">
+                  Cook
+                </Label>
+                <Input
+                  id="cook"
+                  value={value.cook}
+                  onChange={(e) => setField("cook", e.target.value)}
+                  disabled={disabled}
+                  placeholder="e.g. 25 min"
+                />
+              </div>
+            </div>
+
+            {/* Ingredients */}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold">Ingredients:</div>
+
+              <div className="space-y-2">
+                {value.ingredients.length === 0 ? (
+                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                    No ingredients yet.
+                  </div>
+                ) : null}
+
+                {value.ingredients.map((ing) => (
+                  <div
+                    key={ing.id}
+                    className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-white p-2"
+                  >
+                    <div className="pt-1">
+                      <Checkbox
+                        checked={!!checked[ing.id]}
+                        onCheckedChange={() => toggleIngredient(ing.id)}
+                        disabled={disabled}
+                        aria-label="Check ingredient (UI only)"
+                      />
+                    </div>
+
+                    <Input
+                      value={ing.text}
+                      onChange={(e) => updateIngredient(ing.id, e.target.value)}
+                      disabled={disabled}
+                      placeholder="e.g. 2 cups flour"
+                      className="h-9"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeIngredient(ing.id)}
+                      disabled={disabled}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Button type="button" variant="outline" onClick={addIngredient} disabled={disabled}>
+                + Add ingredient
+              </Button>
+            </div>
+
+            {/* Steps */}
+            <div className="space-y-3">
+              <div className="text-sm font-semibold">Steps:</div>
+
+              <div className="space-y-2">
+                {value.steps.length === 0 ? (
+                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                    No steps yet.
+                  </div>
+                ) : null}
+
+                {value.steps.map((step, idx) => (
+                  <div
+                    key={step.id}
+                    className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-white p-2"
+                  >
+                    <div className="mt-2 w-6 text-right text-xs text-neutral-500">
+                      {idx + 1}.
+                    </div>
+
+                    <Input
+                      value={step.text}
+                      onChange={(e) => updateStep(step.id, e.target.value)}
+                      disabled={disabled}
+                      placeholder="Editable step…"
+                      className="h-9"
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => removeStep(step.id)}
+                      disabled={disabled}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Button type="button" variant="outline" onClick={addStep} disabled={disabled}>
+                + Add step
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+
+      {/* Footer */}
+      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-5 py-4">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={disabled}>
+          Cancel
+        </Button>
+
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="outline" onClick={onTryAgain} disabled={disabled}>
+            Try Again
+          </Button>
+
+          <Button
+            type="button"
+            className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+            onClick={onLooksGood}
+            disabled={disabled}
+          >
+            Looks Good ✓
+          </Button>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}

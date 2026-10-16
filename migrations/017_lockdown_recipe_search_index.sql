@@ -1,0 +1,21 @@
+-- migrations/017_lockdown_recipe_search_index.sql
+-- Phase 11.C.3: Lock down recipe_search_index PostgREST exposure
+--
+-- Supabase auto-grants SELECT on public-schema objects to the anon and
+-- authenticated roles, exposing them via the PostgREST Data API.
+-- Materialized views bypass source-table RLS, so any authenticated
+-- user could query /rest/v1/recipe_search_index directly and see
+-- other users' recipe metadata (title, source_url, favorite, etc.)
+-- without going through the search_recipes_fts RPC's user_id filter.
+--
+-- The FastAPI backend uses the service_role client (get_db), not the
+-- authenticated client, so this revoke does NOT affect the Python
+-- search path. The GRANT EXECUTE ON FUNCTION search_recipes_fts TO
+-- authenticated from migration 016 remains in place but is defensive
+-- only — the mobile app hits search through the FastAPI backend,
+-- never the Supabase Data API directly.
+--
+-- Surfaced by the Supabase security advisor
+-- (materialized_view_in_api, lint 0016) after migration 016 ran.
+
+REVOKE SELECT ON recipe_search_index FROM anon, authenticated;

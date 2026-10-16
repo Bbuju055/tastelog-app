@@ -1,0 +1,20 @@
+# Tastelog: Development dependencies
+# Compile with: make deps-dev
+# Install with: make sync-dev
+#
+# Inherits all runtime deps via -r
+
+-r requirements.in
+
+# =============================================================================
+# Testing
+# =============================================================================
+pytest>=7.4.0,<9
+pytest-asyncio>=0.23.0,<1
+httpx>=0.26.0,<1
+
+# =============================================================================
+# Linting / formatting (add as needed)
+# =============================================================================
+# ruff>=0.1.0,<1
+# mypy>=1.8.0,<2
