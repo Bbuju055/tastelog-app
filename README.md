@@ -36,7 +36,7 @@ Full component and schema reference: [docs/architecture.md](docs/architecture.md
 
 ## Run it locally
 
-Requirements: Python 3.12, Node 20, and for the full app a Supabase project and an Anthropic API key.
+Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (its test suite hangs under Node 20), and for the full app a Supabase project and an Anthropic API key.
 
 **Backend**
 

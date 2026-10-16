@@ -55,10 +55,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 24: several UI suites (SuccessBeat, DraftReviewScreen) hang under Node 20.
+          node-version: 24
           cache: npm
           cache-dependency-path: tastelog-mobile/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      # Shared runners are slow; cap workers and lift jest's 5 s default so UI tests don't time out.
-      - run: npm test -- --ci --maxWorkers=2 --testTimeout=20000
+      - run: npm test -- --ci
