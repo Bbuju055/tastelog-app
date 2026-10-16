@@ -60,4 +60,5 @@ jobs:
           cache-dependency-path: tastelog-mobile/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test -- --ci
+      # Shared runners are slow; cap workers and lift jest's 5 s default so UI tests don't time out.
+      - run: npm test -- --ci --maxWorkers=2 --testTimeout=20000
