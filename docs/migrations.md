@@ -159,6 +159,27 @@ cryptographically verify it); PostgREST schema-cache staleness windows;
 old-code incompatibility with non-additive ledger-ahead migrations;
 partial-but-non-empty packaged inventory.
 
+## Fresh database bootstrap
+
+`migrations/` starts at 003. The original 001/002 files are not in this
+repository, so a fresh database needs `db/bootstrap/000_base_schema.sql`
+first: a reconstruction of the five pre-003 tables (`recipes`,
+`recipe_ingredients`, `recipe_steps`, `grocery_lists`, `grocery_items`)
+derived from the column lists that later migrations, the API's insert
+paths, the response models and `docs/architecture.md` pin down. Its header
+lists the evidence and the assumptions it could not evidence. It cannot be
+diffed against production from this repository, and it is deliberately
+not under `migrations/`: the guard requires every file there to exist in
+the production ledger, and this schema predates the ledger.
+
+`db/bootstrap/apply.sh <psql args>` applies the base schema and then every
+migration in order (the superseded `004_search_function.sql` is skipped,
+as production applied them) to a database that already has Supabase's
+`auth` schema and PostgREST roles — `supabase start` or the
+`supabase/postgres` image. `tests/db/run_db_proof.sh` runs the same base
+and chain on the pinned production Postgres image under Docker, with no
+migration skipped, before proving 026 and 027.
+
 ## Baseline (pre-ledger history)
 
 Migrations 003–015 (14 files, including both `004_*` files) predate the

@@ -13,9 +13,6 @@
 # runs the U0..U18 batteries (proof_migration_027.sql) and the C-ED1..
 # C-ED3 concurrent edit batteries.
 #
-# Grocery-only migrations (008, 011, 012, 024) are skipped: their base
-# tables predate 003 and nothing in the mapping surface touches them.
-#
 # Usage: tests/db/run_db_proof.sh   (from the repo root or anywhere)
 # Requires: docker. Exit 0 = every battery passed.
 
@@ -35,8 +32,11 @@ CHAIN=(
   005_recipe_drafts.sql
   006_confirm_recipe_draft_rpc.sql
   007_capture_tokens.sql
+  008_grocery_lists_updated_at.sql
   009_recipes_favorite.sql
   010_recipe_tags.sql
+  011_grocery_consolidated.sql
+  012_grocery_lists_user_name.sql
   013_multi_image_drafts.sql
   014_source_url.sql
   015_cook_events.sql
@@ -48,6 +48,7 @@ CHAIN=(
   021_riff_usage.sql
   022_riff_draft_anchor.sql
   023_save_draft_riff_recipe.sql
+  024_grocery_items_note.sql
   025_migration_ledger_rpc.sql
 )
 
@@ -87,7 +88,7 @@ PSQLA -c "CREATE SCHEMA IF NOT EXISTS supabase_migrations;
   GRANT SELECT ON supabase_migrations.schema_migrations TO postgres;"
 
 echo "== base schema (reconstructed pre-003) =="
-PSQL < "$HERE/base_schema_pre003.sql"
+PSQL < "$REPO/db/bootstrap/000_base_schema.sql"
 
 echo "== migration chain 003..025 =="
 for f in "${CHAIN[@]}"; do
