@@ -21,9 +21,9 @@ Three clients share one FastAPI backend: a Next.js web app, an Expo / React Nati
 
 ```
  iOS app (Expo)  ─┐
- Share extension ─┼─ Bearer tl_cap_* ──▶  FastAPI  ──▶  Supabase Postgres (RLS)
- iOS Shortcuts   ─┘                        │     │  ──▶  Supabase Storage
- Web app (Next.js) ── Supabase JWT ───────▶│     └────▶  Claude (vision + riff)
+ Web app (Next.js)┼─ Supabase JWT ─────▶  FastAPI  ──▶  Supabase Postgres (RLS)
+ Share extension ─┐                        │     │  ──▶  Supabase Storage
+ iOS Shortcuts   ─┴─ Bearer tl_cap_* ─────▶│     └────▶  Claude (vision + riff)
 ```
 
 - **api/** FastAPI with an app factory, Pydantic v2 models at every boundary, JWKS-verified Supabase JWTs, Postgres-backed idempotency keys, per-token rate limiting, SSE streaming for riff. Settings fail fast on boot if misconfigured.
@@ -81,7 +81,7 @@ All three run in [CI](.github/workflows/ci.yml) on every push. Lint and strict T
 ## Things worth reading
 
 - `api/core/jwt.py` JWKS fetch with caching and key-rotation retry; RS256 and ES256.
-- `api/core/idempotency.py` Postgres-backed idempotency so a flaky share-extension upload never creates two drafts.
+- `api/core/idempotency.py` Postgres-backed idempotency keys on the Shortcuts capture route (`/api/recipes/capture`), so a retried upload never creates two recipes. The share extension's draft route does not have this yet.
 - `api/core/token_auth.py` capture tokens: SHA-256 at rest, scoped, revocable, rate-limited.
 - `tastelog-web/src/lib/ingredients/` the exact-fraction scaling engine and its parser for inputs like "1 1/2 cups".
 - `tastelog-mobile/ios/TastelogShareExtension/` the Swift share extension, and `scripts/CaptureFailureMapperContract.swift`, a contract test for its error mapping.

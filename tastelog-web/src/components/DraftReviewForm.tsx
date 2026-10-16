@@ -7,9 +7,6 @@
  * Critical rule: NEVER autosave edits.
  * - We keep edits in local state only.
  * - Confirm sends edited payload once, explicitly.
- *
- * We do NOT assume draft contains ingredients/steps until contract is verified.
- * If present at runtime, we surface them; otherwise render empty lists.
  */
 
 import { useMemo, useState } from "react";
@@ -18,16 +15,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { confirmDraft, deleteDraft, getDraft } from "@/lib/api/endpoints";
 import { apiErrorMessage } from "@/lib/useApiErrorMessage";
-import RecipeCard, {
-  RecipeCardValue,
-  IngredientLine,
-  StepLine,
-} from "@/components/RecipeCard";
-import type { DraftResponse, RecipeDetailResponse } from "@/lib/api/schemas";
-
-/** Type guard for objects with a text property */
-const hasTextProp = (v: unknown): v is { text: string } =>
-  typeof v === "object" && v !== null && "text" in v && typeof (v as { text?: unknown }).text === "string";
+import RecipeCard, { RecipeCardValue } from "@/components/RecipeCard";
+import { buildConfirmPatch, draftToCardValue } from "@/lib/drafts/reviewPatch";
+import type { DraftConfirmRequest, DraftResponse, RecipeDetailResponse } from "@/lib/api/schemas";
 
 type Props = {
   draftId: string;
@@ -37,65 +27,19 @@ function draftQueryKey(draftId: string) {
   return ["draft", draftId] as const;
 }
 
-/**
- * Confirm payload shaping:
- * We only send fields we are confident exist / are accepted.
- *
- * For now, only `title` is in the verified draft schema.
- * If/when ingredients/steps are verified in backend contract, we can extend.
- */
-function buildConfirmPatch(args: {
-  original: Pick<DraftResponse, "title"> | null;
-  edited: RecipeCardValue;
-}) {
-  const patch: Record<string, unknown> = {};
-
-  const originalTitle = typeof args.original?.title === "string" ? args.original.title : "";
-  if (args.edited.title !== originalTitle) patch.title = args.edited.title;
-
-  return Object.keys(patch).length > 0 ? patch : undefined;
-}
-
-function toLines(value: unknown, prefix: string): { lines: { id: string; text: string }[] } {
-  // Accept either string[] or {text:string}[] or already-normalized lines;
-  // This is display-only until schemas are verified. No persistence.
-  if (Array.isArray(value)) {
-    const lines = value
-      .map((v, idx) => {
-        if (typeof v === "string") return { id: `${prefix}_${idx}`, text: v };
-        if (hasTextProp(v)) return { id: `${prefix}_${idx}`, text: v.text };
-        return null;
-      })
-      .filter((x): x is { id: string; text: string } => x !== null);
-    return { lines };
-  }
-  return { lines: [] };
-}
-
 /** Props for the ready-state form (draft guaranteed to exist) */
 type DraftReadyProps = {
   draft: DraftResponse;
   errorMsg: string | null;
   disabled: boolean;
   onTryAgain: () => void;
-  onConfirm: (patch?: Record<string, unknown>) => void;
+  onConfirm: (patch?: DraftConfirmRequest) => void;
   onCancel: () => void;
 };
 
 /** Form component that mounts only when draft exists (allows clean state initialization) */
 function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm, onCancel }: DraftReadyProps) {
-  const initialCardValue = useMemo<RecipeCardValue>(() => {
-    const { lines: ingredients } = toLines(draft.ingredients, "ing");
-    const { lines: steps } = toLines(draft.steps, "step");
-    return {
-      title: draft.title,
-      servings: draft.servings ?? "",
-      prep: draft.prep_time ?? "",
-      cook: draft.cook_time ?? "",
-      ingredients: ingredients as IngredientLine[],
-      steps: steps as StepLine[],
-    };
-  }, [draft]);
+  const initialCardValue = useMemo<RecipeCardValue>(() => draftToCardValue(draft), [draft]);
 
   const [cardValue, setCardValue] = useState<RecipeCardValue>(() => initialCardValue);
 
@@ -113,7 +57,7 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm
           setCardValue(initialCardValue);
           onTryAgain();
         }}
-        onLooksGood={() => onConfirm(buildConfirmPatch({ original: draft, edited: cardValue }))}
+        onLooksGood={() => onConfirm(buildConfirmPatch(draft, cardValue))}
       />
 
       {errorMsg ? (
@@ -162,7 +106,7 @@ export default function DraftReviewForm({ draftId }: Props) {
   const busy = draftQuery.isLoading || draftQuery.isFetching || false;
 
   const confirmMutation = useMutation({
-    mutationFn: async (patch?: Record<string, unknown>) => {
+    mutationFn: async (patch?: DraftConfirmRequest) => {
       if (!draft) throw new Error("Draft not loaded.");
       return confirmDraft(draftId, patch);
     },
