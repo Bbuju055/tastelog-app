@@ -627,6 +627,25 @@ class TestUrlCaptureErrorContract:
         assert detail["title"] == "Existing"
         assert calls["create_draft"] == 0
 
+    @_pytest_ps1.mark.parametrize(
+        "code,status",
+        [
+            ("BLOCKED_ADDRESS", 400),  # SSRF guard: the client's URL is refused
+            ("INVALID_URL", 400),
+            ("TIMEOUT", 502),  # the upstream site failed
+            ("NON_HTML", 502),
+        ],
+    )
+    def test_url_fetch_failure_maps_and_creates_no_draft(
+        self, provider_contract_client, monkeypatch, code, status
+    ):
+        from api.core.exceptions import URLFetchError
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, URLFetchError("x", code=code))
+        resp = provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
+        assert resp.status_code == status
+        assert calls["create_draft"] == 0
+
 
 # =============================================================================
 # Issue 1: confirm-time mapping flow (route wiring)

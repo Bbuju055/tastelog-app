@@ -11,12 +11,14 @@ Pure functions — no global state, explicit dependencies.
 from __future__ import annotations
 
 import dataclasses
+import ipaddress
 import json
 import logging
 import re
+import socket
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 from uuid import UUID
 
 import anthropic
@@ -130,52 +132,116 @@ def normalize_url(url: str) -> str:
 # =============================================================================
 
 
-def fetch_url(url: str) -> str:
+_MAX_REDIRECTS = 5
+_MAX_BODY_BYTES = 5 * 1024 * 1024
+_FETCH_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+_FETCH_HEADERS = {
+    "User-Agent": "Tastelog/1.0 (recipe parser)",
+    "Accept": "text/html",
+}
+
+
+def _resolve_host(host: str) -> list[str]:
+    """Resolve a hostname to every address DNS returns. Separate so tests can stub it."""
+    try:
+        infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise URLFetchError("DNS resolution failed", code="DNS_ERROR")
+    return sorted({info[4][0] for info in infos})
+
+
+def _is_public_address(address: str) -> bool:
+    ip = ipaddress.ip_address(address)
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+
+def _pin_to_public_address(url: str) -> tuple[httpx.URL, dict[str, str], dict[str, Any]]:
+    """Validate ``url`` for server-side fetching and pin it to one public address.
+
+    SSRF guard: every address the hostname resolves to must be public, and
+    the request is sent to that exact address (so a second DNS lookup by the
+    HTTP client cannot be rebound to a private one). The hostname is kept for
+    the Host header and, over https, for SNI and certificate verification.
+
+    Returns (url_to_request, extra_headers, request_extensions).
+    """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if parsed.scheme not in ("http", "https") or not host:
+        raise URLFetchError("Invalid URL", code="INVALID_URL")
+
+    try:
+        ipaddress.ip_address(host)
+        addresses = [host]
+    except ValueError:
+        addresses = _resolve_host(host)
+    if not all(_is_public_address(a) for a in addresses):
+        raise URLFetchError("URL points to a non-public address", code="BLOCKED_ADDRESS")
+
+    address = addresses[0]
+    netloc = f"[{address}]" if ":" in address else address
+    if parsed.port is not None:
+        netloc = f"{netloc}:{parsed.port}"
+    pinned = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, ""))
+
+    host_header = host if parsed.port is None else f"{host}:{parsed.port}"
+    extensions: dict[str, Any] = {"sni_hostname": host} if parsed.scheme == "https" else {}
+    return httpx.URL(pinned), {"Host": host_header}, extensions
+
+
+def fetch_url(url: str, *, transport: httpx.BaseTransport | None = None) -> str:
     """Fetch URL content as HTML string.
+
+    Follows at most 5 redirects, re-validating every hop against the SSRF
+    guard, and reads at most 5 MiB of body.
 
     Raises URLFetchError with specific codes on failure.
     """
     try:
-        with httpx.Client(
-            timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0),
-            follow_redirects=True,
-            max_redirects=5,
-        ) as client:
-            response = client.get(
-                url,
-                headers={
-                    "User-Agent": "Tastelog/1.0 (recipe parser)",
-                    "Accept": "text/html",
-                },
-            )
+        with httpx.Client(timeout=_FETCH_TIMEOUT, follow_redirects=False, transport=transport) as client:
+            current = url
+            for _ in range(_MAX_REDIRECTS + 1):
+                pinned, headers, extensions = _pin_to_public_address(current)
+                with client.stream(
+                    "GET", pinned, headers={**_FETCH_HEADERS, **headers}, extensions=extensions
+                ) as response:
+                    location = response.headers.get("location")
+                    if response.is_redirect and location:
+                        current = urljoin(current, location)
+                        continue
+
+                    if response.status_code != 200:
+                        raise URLFetchError(
+                            f"Page returned HTTP {response.status_code}",
+                            code="NON_200",
+                        )
+
+                    content_type = response.headers.get("content-type", "")
+                    if "text/html" not in content_type and "application/xhtml" not in content_type:
+                        raise URLFetchError(
+                            f"Not an HTML page: {content_type}",
+                            code="NON_HTML",
+                        )
+
+                    body = bytearray()
+                    for chunk in response.iter_bytes():
+                        body.extend(chunk)
+                        if len(body) > _MAX_BODY_BYTES:
+                            raise URLFetchError("Page too large", code="TOO_LARGE")
+                    return bytes(body).decode(response.charset_encoding or "utf-8", errors="replace")
+
+            raise URLFetchError("Too many redirects", code="REDIRECT_LOOP")
     except httpx.TimeoutException:
         raise URLFetchError("Page took too long to load", code="TIMEOUT")
-    except httpx.TooManyRedirects:
-        raise URLFetchError("Too many redirects", code="REDIRECT_LOOP")
     except httpx.ConnectError as e:
         msg = str(e).lower()
-        if "name resolution" in msg or "dns" in msg or "getaddrinfo" in msg:
-            raise URLFetchError("DNS resolution failed", code="DNS_ERROR")
         if "ssl" in msg or "certificate" in msg:
             raise URLFetchError("SSL/TLS error", code="SSL_ERROR")
         raise URLFetchError("Connection failed", code="CONNECTION_ERROR")
     except httpx.HTTPError:
         raise URLFetchError("HTTP request failed", code="CONNECTION_ERROR")
-
-    if response.status_code != 200:
-        raise URLFetchError(
-            f"Page returned HTTP {response.status_code}",
-            code="NON_200",
-        )
-
-    content_type = response.headers.get("content-type", "")
-    if "text/html" not in content_type and "application/xhtml" not in content_type:
-        raise URLFetchError(
-            f"Not an HTML page: {content_type}",
-            code="NON_HTML",
-        )
-
-    return response.text
 
 
 # =============================================================================

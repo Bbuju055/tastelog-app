@@ -162,7 +162,9 @@ def _handle_url_capture(
         )
     except URLFetchError as e:
         logger.warning(f"URL fetch failed: {e.code}: {e}")
-        raise HTTPException(status_code=502, detail=str(e))
+        # The client supplied a URL we refuse to fetch; the upstream site did not fail.
+        status = 400 if e.code in ("INVALID_URL", "BLOCKED_ADDRESS") else 502
+        raise HTTPException(status_code=status, detail=str(e))
     except ProviderError as e:
         # PROVIDER-S1: provider-caused failure — honest service error,
         # no draft was created, retry is meaningful. Must precede

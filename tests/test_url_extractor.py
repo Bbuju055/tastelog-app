@@ -14,10 +14,11 @@ from api.core.anthropic_client import (
     PROVIDER_BAD_RESPONSE,
     PROVIDER_UNAVAILABLE,
 )
-from api.core.exceptions import ProviderError
+from api.core.exceptions import ProviderError, URLFetchError
 from api.core.parser import get_default_config
 from api.core.url_extractor import (
     extract_recipe_from_url,
+    fetch_url,
     normalize_url,
     parse_iso_duration,
     normalize_instructions,
@@ -890,3 +891,142 @@ class TestTextFallbackCanonicalization:
         assert result["steps"] == [
             {"position": 1, "instruction": "Simmer the lentils."}
         ]
+
+
+# =============================================================================
+# fetch_url: SSRF guard
+# =============================================================================
+
+_PUBLIC_IP = "93.184.216.34"
+_HTML_HEADERS = {"content-type": "text/html; charset=utf-8"}
+
+
+def _resolver(table: dict[str, list[str]]):
+    """Stub DNS: hostname -> addresses. Unknown names raise like gaierror would."""
+
+    def resolve(host: str) -> list[str]:
+        if host not in table:
+            raise URLFetchError("DNS resolution failed", code="DNS_ERROR")
+        return table[host]
+
+    return resolve
+
+
+class TestFetchUrlSsrfGuard:
+    def _fetch(self, url: str, handler, table: dict[str, list[str]]) -> str:
+        with patch("api.core.url_extractor._resolve_host", side_effect=_resolver(table)):
+            return fetch_url(url, transport=httpx.MockTransport(handler))
+
+    def test_direct_private_ip_is_blocked_before_any_request(self):
+        calls: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request)
+            return httpx.Response(200, headers=_HTML_HEADERS, text="<html></html>")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("http://10.0.0.1/recipe", handler, {})
+        assert exc.value.code == "BLOCKED_ADDRESS"
+        assert calls == []
+
+    @pytest.mark.parametrize(
+        "address",
+        ["127.0.0.1", "169.254.169.254", "192.168.1.10", "172.16.0.1", "::1", "fd00::1", "::ffff:127.0.0.1", "0.0.0.0"],
+    )
+    def test_hostname_resolving_to_non_public_address_is_blocked(self, address: str):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not connect")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://evil.test/", handler, {"evil.test": [address]})
+        assert exc.value.code == "BLOCKED_ADDRESS"
+
+    def test_mixed_public_and_private_answer_is_blocked(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not connect")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://evil.test/", handler, {"evil.test": [_PUBLIC_IP, "10.0.0.5"]})
+        assert exc.value.code == "BLOCKED_ADDRESS"
+
+    def test_connection_is_pinned_to_validated_address_with_hostname_tls(self):
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, headers=_HTML_HEADERS, text="<html>ok</html>")
+
+        html = self._fetch("https://example.com/recipe?x=1", handler, {"example.com": [_PUBLIC_IP]})
+        assert html == "<html>ok</html>"
+        assert len(seen) == 1
+        req = seen[0]
+        assert req.url.host == _PUBLIC_IP
+        assert req.url.path == "/recipe" and req.url.query == b"x=1"
+        assert req.headers["host"] == "example.com"
+        assert req.extensions["sni_hostname"] == "example.com"
+
+    def test_redirect_from_public_to_private_is_blocked(self):
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request.headers["host"])
+            return httpx.Response(302, headers={"location": "http://10.0.0.1/internal"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "BLOCKED_ADDRESS"
+        assert seen == ["example.com"]
+
+    def test_redirect_to_hostname_resolving_privately_is_blocked(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(302, headers={"location": "https://internal.test/"})
+
+        table = {"example.com": [_PUBLIC_IP], "internal.test": ["10.1.2.3"]}
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, table)
+        assert exc.value.code == "BLOCKED_ADDRESS"
+
+    def test_relative_redirect_is_followed_against_current_hostname(self):
+        seen: list[tuple[str, str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((request.headers["host"], request.url.path))
+            if request.url.path == "/a":
+                return httpx.Response(301, headers={"location": "/b"})
+            return httpx.Response(200, headers=_HTML_HEADERS, text="<html>b</html>")
+
+        html = self._fetch("https://example.com/a", handler, {"example.com": [_PUBLIC_IP]})
+        assert html == "<html>b</html>"
+        assert seen == [("example.com", "/a"), ("example.com", "/b")]
+
+    def test_redirect_cap(self):
+        hops: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            hops.append(request.url.path)
+            return httpx.Response(302, headers={"location": f"/{len(hops)}"})
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/0", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "REDIRECT_LOOP"
+        assert len(hops) == 6  # initial request + 5 redirects, then stop
+
+    def test_oversize_body_is_rejected_without_buffering_everything(self):
+        def body():
+            for _ in range(8):
+                yield b"x" * (1024 * 1024)
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, headers=_HTML_HEADERS, stream=httpx.ByteStream(b"".join(body())))
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("https://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "TOO_LARGE"
+
+    def test_unsupported_scheme_is_rejected(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not connect")
+
+        with pytest.raises(URLFetchError) as exc:
+            self._fetch("ftp://example.com/", handler, {"example.com": [_PUBLIC_IP]})
+        assert exc.value.code == "INVALID_URL"
