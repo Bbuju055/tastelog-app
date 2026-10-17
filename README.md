@@ -38,7 +38,7 @@ Full component and schema reference: [docs/architecture.md](docs/architecture.md
 
 ## Run it locally
 
-Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (its test suite hangs under Node 20). The full-stack demo also needs Docker and the [Supabase CLI](https://supabase.com/docs/guides/local-development); no hosted account or paid key is needed for it.
+Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (its test suite hangs under Node 20). The full-stack demo also needs Docker, the [Supabase CLI](https://supabase.com/docs/guides/local-development), `psql` and `curl`; no hosted account or paid key is needed for it.
 
 **Backend**
 
@@ -56,7 +56,7 @@ make dev                                    # http://localhost:8000, docs at /do
 make demo                                   # local Supabase, schema, demo login, 3 recipes, env files
 cp .env.demo .env && make demo-api          # API on http://localhost:8000, Claude replaced by a stub
 cp tastelog-web/.env.demo.local tastelog-web/.env.local
-(cd tastelog-web && npm run dev)            # http://localhost:3000, log in as demo@tastelog.local / demo-password
+(cd tastelog-web && npm ci && npm run dev)  # http://localhost:3000, log in as demo@tastelog.local / demo-password
 supabase stop                               # when done
 ```
 

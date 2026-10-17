@@ -40,8 +40,16 @@ supabase start
 eval "$(supabase status -o env)"
 
 echo "== schema =="
-if psql "$DB_URL" -Atc "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='recipes'" | grep -q 1; then
+# apply.sh ledgers each migration as it lands, so the last one in the ledger
+# means the whole chain is in. A database that has tables but not that entry
+# is an interrupted bootstrap: refuse rather than seed on top of it.
+LAST_MIGRATION="$(basename "$(ls migrations/*.sql | tail -1)" .sql)"
+if psql "$DB_URL" -Atc "SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='2000000000_$LAST_MIGRATION'" 2>/dev/null | grep -q 1; then
   echo "   already applied, skipping"
+elif psql "$DB_URL" -Atc "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='recipes'" | grep -q 1; then
+  echo "partial install: public.recipes exists but $LAST_MIGRATION is not in the migration ledger (an earlier bootstrap was interrupted)." >&2
+  echo "recover with: supabase db reset && make demo   (resets the LOCAL demo database only)" >&2
+  exit 1
 else
   db/bootstrap/apply.sh "$DB_URL"
 fi
