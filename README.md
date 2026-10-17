@@ -1,5 +1,7 @@
 # Tastelog
 
+![CI](https://github.com/Bbuju055/tastelog-app/actions/workflows/ci.yml/badge.svg)
+
 Capture a recipe from a photo, a screenshot, a PDF, or a URL. Tastelog parses it with Claude Vision into structured ingredients and steps, lets you review and correct the draft, then stores it in a searchable personal cookbook with grocery lists, cook history, exact-fraction scaling, and an AI "riff" mode for adapting a recipe in conversation.
 
 Three clients share one FastAPI backend: a Next.js web app, an Expo / React Native iOS app with a native Swift share extension, and an iOS Shortcuts flow.
@@ -85,8 +87,9 @@ npx expo start --ios
 | Backend | pytest | 871 | placeholder `.env` only |
 | Web | vitest | 170 | nothing |
 | Mobile | jest | 1306 | nothing |
+| Migrations | real PostgreSQL 17.6 (`tests/db/run_db_proof.sh`) | base schema + 003..027, concurrency batteries | Docker |
 
-All three run in [CI](.github/workflows/ci.yml) on every push. Lint and strict TypeScript checks run alongside the web and mobile suites.
+All four run in [CI](.github/workflows/ci.yml) on every push. Lint and strict TypeScript checks run alongside the web and mobile suites, and the web job also runs `next build`. The web review-and-confirm journey is covered without a browser and without a database: `tastelog-web/src/lib/drafts/reviewPatch.test.ts` proves the form's adapter and patch builder, and the confirm tests in `tests/test_drafts.py` prove the route forwards those overrides to the confirm RPC (mocked). Persistence and reload through a real database are not covered by an automated test; they were checked by hand against the local demo stack.
 
 ## Things worth reading
 

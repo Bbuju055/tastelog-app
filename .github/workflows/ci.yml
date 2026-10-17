@@ -44,6 +44,7 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm test
+      - run: npm run build
 
   mobile:
     name: Mobile (jest)
@@ -62,3 +63,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test -- --ci
+
+  db-proof:
+    name: DB proof (real PostgreSQL)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Applies the reconstructed base schema + migrations 003..027 on the
+      # production Postgres image and runs the proof batteries (needs Docker).
+      - run: tests/db/run_db_proof.sh

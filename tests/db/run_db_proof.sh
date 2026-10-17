@@ -60,9 +60,28 @@ docker run -d --name "$NAME" \
   -e POSTGRES_PASSWORD="$PGPASSWORD_VAL" \
   "$IMG" >/dev/null
 
+# statement_timeout also bounds lock waits, so a battery that deadlocks
+# fails in a minute instead of hanging the job.
 PSQL() {
-  docker exec -i -e PGPASSWORD="$PGPASSWORD_VAL" "$NAME" \
+  docker exec -i -e PGPASSWORD="$PGPASSWORD_VAL" \
+    -e PGOPTIONS="-c statement_timeout=60000" "$NAME" \
     psql -h 127.0.0.1 -U postgres -d postgres -v ON_ERROR_STOP=1 -q "$@"
+}
+# Concurrency batteries: session A opens a transaction, takes its lock, then
+# parks in _hold_until_blocked(), which commits only once another session is
+# waiting on a lock. Start session B only once A is parked. Together these
+# make the overlap certain: B cannot start before A holds the lock (wrong
+# winner) and A cannot commit before B is blocked behind it (no contention).
+wait_for_holder() {
+  local n i
+  for i in $(seq 1 200); do
+    n="$(PSQL -t -A -c "SELECT count(*) FROM pg_stat_activity
+      WHERE pid <> pg_backend_pid() AND state = 'active'
+        AND query LIKE '%_hold_until_blocked()%'")"
+    [ "${n:-0}" -ge 1 ] && return 0
+    sleep 0.1
+  done
+  echo "session A never reached _hold_until_blocked()"; exit 1
 }
 # Image superuser -- used ONLY for auth.users seeding (GoTrue's job in prod).
 PSQLA() {
@@ -118,6 +137,28 @@ PSQL < "$HERE/proof_migration_026.sql"
 R="00000000-0000-4000-8000-0000000000a1"
 
 echo "== C0: concurrency fixtures =="
+# SECURITY DEFINER (owner: postgres) so the wait state of other sessions is
+# visible even when the calling transaction has SET ROLE to a lesser role.
+# pg_stat_activity is snapshotted per transaction; clear it each iteration.
+PSQL <<'SQL'
+CREATE OR REPLACE FUNCTION _hold_until_blocked() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE i int := 0;
+BEGIN
+  LOOP
+    PERFORM pg_stat_clear_snapshot();
+    EXIT WHEN EXISTS (SELECT 1 FROM pg_stat_activity
+                      WHERE wait_event_type = 'Lock'
+                        AND pg_backend_pid() = ANY(pg_blocking_pids(pid)));
+    i := i + 1;
+    IF i >= 200 THEN
+      RAISE EXCEPTION 'no session blocked behind this transaction within 20 s';
+    END IF;
+    PERFORM pg_sleep(0.1);
+  END LOOP;
+END;
+$$;
+SQL
 # After the single-session batteries, recipe A1 holds exactly one
 # ingredient ('vanilla', position 4). Add two named ingredients so the
 # concurrency batteries have distinct positions 2 and 3 to fight over.
@@ -132,11 +173,11 @@ SET ROLE service_role;
 BEGIN;
 SELECT attach_step_ingredient_mapping('00000000-0000-4000-8000-0000000000a1'::uuid,
   '[{"step_position":2,"ingredient_positions":[1]}]'::jsonb);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 PSQL -c "SET ROLE service_role; SELECT attach_step_ingredient_mapping('$R'::uuid,
   '[{\"step_position\":2,\"ingredient_positions\":[2]}]'::jsonb);" >/dev/null
 wait "$A_PID"
@@ -159,11 +200,11 @@ SET ROLE service_role;
 BEGIN;
 SELECT attach_step_ingredient_mapping('00000000-0000-4000-8000-0000000000a1'::uuid,
   '[{"step_position":2,"ingredient_positions":[1]}]'::jsonb);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 # Blocks on the recipe lock held by the open attach; its demotion must
 # land AFTER the attach's promotion, leaving the step honestly unknown.
 PSQL -c "INSERT INTO recipe_ingredients (recipe_id, position, name)
@@ -198,11 +239,11 @@ BEGIN;
 SELECT save_riff_recipe_atomic('00000000-0000-4000-8000-0000000000a1'::uuid,
   '00000000-0000-4000-8000-0000000000c5'::uuid,
   '00000000-0000-4000-8000-0000000000e5'::uuid, NULL);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 B_OUT="$(PSQL -t -A <<'SQL'
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000000a', false);
 SET ROLE authenticated;
@@ -275,11 +316,11 @@ BEGIN;
 SELECT update_recipe_content('$E1'::uuid, '$UA'::uuid, $REV,
   gen_random_uuid(), '{"fields":{"title":"CED1 winner"}}'::jsonb,
   NULL, '[]'::jsonb);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 # Blocks on the edit's row lock; once the edit commits, the attach sees
 # the advanced revision and must refuse (TL428), never promote.
 B_OUT="$(PSQL -t -A -c "SELECT _try_attach('$E1'::uuid, $REV,
@@ -302,11 +343,11 @@ BEGIN;
 SELECT update_recipe_content('$E1'::uuid, '$UA'::uuid, $REV,
   gen_random_uuid(), '{"fields":{"title":"CED2 A wins"}}'::jsonb,
   NULL, '[]'::jsonb);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 B_OUT="$(PSQL -t -A -c "SELECT _try_edit('$E1'::uuid, '$UA'::uuid, $REV,
   '{\"fields\":{\"title\":\"CED2 B stale\"}}'::jsonb);" | tail -1)"
 wait "$A_PID"
@@ -370,11 +411,11 @@ BEGIN;
 SELECT update_recipe_content('$CED3'::uuid, '$UA'::uuid, $REV,
   gen_random_uuid(), '{"fields":{"title":"mid edit"}}'::jsonb,
   NULL, '[]'::jsonb);
-SELECT pg_sleep(4);
+SELECT _hold_until_blocked();
 COMMIT;
 SQL
 A_PID=$!
-sleep 1
+wait_for_holder
 PSQL -c "DELETE FROM recipe_steps WHERE recipe_id = '$CED3';
   DELETE FROM recipe_ingredients WHERE recipe_id = '$CED3';
   DELETE FROM recipes WHERE id = '$CED3';" >/dev/null
