@@ -36,7 +36,7 @@ Full component and schema reference: [docs/architecture.md](docs/architecture.md
 
 ## Run it locally
 
-Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (its test suite hangs under Node 20), and for the full app a Supabase project and an Anthropic API key.
+Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (its test suite hangs under Node 20). The full-stack demo also needs Docker and the [Supabase CLI](https://supabase.com/docs/guides/local-development); no hosted account or paid key is needed for it.
 
 **Backend**
 
@@ -44,18 +44,28 @@ Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (
 python3.12 -m venv api/.venv && source api/.venv/bin/activate
 pip install pip-tools && make sync-dev      # hash-verified install from the lockfile
 cp .env.example .env                        # placeholder keys; tests run as-is
-make test                                   # 817 tests, no network
+make test                                   # 871 tests, no network
 make dev                                    # http://localhost:8000, docs at /docs
 ```
 
-To run the app against real data, replace the Supabase and Anthropic values in `.env`.
+**Full stack, no accounts** (Docker + Supabase CLI)
+
+```bash
+make demo                                   # local Supabase, schema, demo login, 3 recipes, env files
+cp .env.demo .env && make demo-api          # API on http://localhost:8000, Claude replaced by a stub
+cp tastelog-web/.env.demo.local tastelog-web/.env.local
+(cd tastelog-web && npm run dev)            # http://localhost:3000, log in as demo@tastelog.local / demo-password
+supabase stop                               # when done
+```
+
+`make demo` starts Postgres, PostgREST, Auth and Storage with the Supabase CLI, applies `db/bootstrap/000_base_schema.sql` plus every migration, creates the demo user and three sample recipes, and writes `.env.demo` and `tastelog-web/.env.demo.local` pointing at that stack. The API verifies the local tokens through JWKS exactly as it does in production (the CLI signs them with a generated ES256 key). With `ANTHROPIC_STUB_MODE=deterministic` the capture route returns a fixed draft instead of calling Claude, so the whole journey works offline: log in, capture any image, correct the draft, confirm, and reload the saved recipe. `/health/ready` reports `compatible` against this database. To run against real data instead, put a hosted Supabase project and an Anthropic key in `.env`.
 
 **Web**
 
 ```bash
 cd tastelog-web
 npm ci && cp .env.example .env.local
-npm test                                    # 151 tests
+npm test                                    # 170 tests
 npm run dev                                 # http://localhost:3000
 ```
 
@@ -63,7 +73,7 @@ npm run dev                                 # http://localhost:3000
 
 ```bash
 cd tastelog-mobile
-npm ci
+npm ci && cp .env.example .env              # for the demo stack, use SUPABASE_ANON_KEY from ../.env.demo
 npm test                                    # 1306 tests across 82 suites
 npx expo start --ios
 ```
@@ -72,8 +82,8 @@ npx expo start --ios
 
 | Suite | Runner | Count | Needs |
 |---|---|---|---|
-| Backend | pytest | 817 | placeholder `.env` only |
-| Web | vitest | 151 | nothing |
+| Backend | pytest | 871 | placeholder `.env` only |
+| Web | vitest | 170 | nothing |
 | Mobile | jest | 1306 | nothing |
 
 All three run in [CI](.github/workflows/ci.yml) on every push. Lint and strict TypeScript checks run alongside the web and mobile suites.

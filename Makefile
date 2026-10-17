@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: deps deps-dev sync sync-dev test api-test dev clean
+.PHONY: deps deps-dev sync sync-dev test api-test dev demo demo-api clean
 
 # Compile locked requirements from .in files
 deps:
@@ -23,6 +23,15 @@ test:
 # Run dev server (--reload is dev-only, do NOT use in prod)
 dev:
 	$(PYTHON) -m uvicorn api.main:app --reload
+
+# Local Supabase + schema + demo login + sample recipes + env files (no paid keys)
+demo:
+	./scripts/demo.sh
+
+# Dev server with .env exported into the process environment: the Claude stub
+# switch and the schema readiness guard read os.environ, not the dotenv file.
+demo-api:
+	set -a && . ./.env && set +a && $(PYTHON) -m uvicorn api.main:app --reload
 
 # Run API tests from scratch (creates venv if needed, syncs deps, runs pytest)
 api-test:

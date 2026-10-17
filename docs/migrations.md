@@ -176,7 +176,11 @@ the production ledger, and this schema predates the ledger.
 migration in order (the superseded `004_search_function.sql` is skipped,
 as production applied them) to a database that already has Supabase's
 `auth` schema and PostgREST roles — `supabase start` or the
-`supabase/postgres` image. `tests/db/run_db_proof.sh` runs the same base
+`supabase/postgres` image. It also records every file under
+`migrations/` in `supabase_migrations.schema_migrations` under the name
+the guard expects (020 under its production alias, the skipped 004 as
+not applied), so `/health/ready` reports `compatible` against the fresh
+database. `tests/db/run_db_proof.sh` runs the same base
 and chain on the pinned production Postgres image under Docker, with no
 migration skipped, before proving 026 and 027.
 
