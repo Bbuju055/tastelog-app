@@ -18,7 +18,7 @@ from uuid import UUID
 import pytest
 
 from api.core.drafts import get_active_draft
-from api.core.exceptions import DraftExpiredError, DraftNotFoundError
+from api.core.exceptions import DraftExpiredError, DraftNotFoundError, StorageError
 from api.dependencies import get_user_id_jwt_or_capture_token
 
 FAKE_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -578,8 +578,11 @@ def _ps1_patch_url_pipeline(monkeypatch, extract_effect, *, existing=None):
 
     monkeypatch.setattr(drafts_module, "extract_recipe_from_url", _extract)
 
+    calls["create_draft_ids"] = []
+
     def _create_draft(*a, **k):
         calls["create_draft"] += 1
+        calls["create_draft_ids"].append(k.get("draft_id"))
         return _ps1_fake_draft_row()
 
     monkeypatch.setattr(drafts_module, "create_draft", _create_draft)
@@ -934,3 +937,566 @@ class TestConfirmMappingFlow:
         resp, _, apply_spy = self._post(confirm_client, draft_row=legacy)
         assert resp.status_code == 200
         apply_spy.assert_not_called()
+
+
+# =============================================================================
+# Idempotency-Key on both draft capture routes (route wiring; the atomic
+# reservation itself is proven in tests/db/proof_migration_028.sql)
+# =============================================================================
+
+
+_IDEM_KEY = "7b1d3e0a-4c2f-4b8e-9a6d-1f2e3d4c5b6a"
+_IDEM_HEADER = {"Idempotency-Key": _IDEM_KEY}
+
+
+def _patch_draft_idempotency(
+    monkeypatch, *, reserve=None, complete_effect=None, complete_result=True
+):
+    """Replace the three 028 helpers; returns the calls each received.
+
+    ``reserve`` is a Reservation to return (None = reserved) or an exception
+    to raise. Each recorded reserve call is (user_id, key, payload_hash,
+    draft_id); complete calls are (key, draft_id, response); release calls
+    are (key, draft_id).
+    """
+    import api.routes.drafts as drafts_module
+    from api.core.draft_idempotency import Reservation
+
+    calls = {"reserve": [], "complete": [], "release": []}
+
+    def _reserve(user_id, key, payload_hash, draft_id, *, supabase):
+        calls["reserve"].append((str(user_id), key, payload_hash, draft_id))
+        if isinstance(reserve, Exception):
+            raise reserve
+        return reserve if reserve is not None else Reservation("reserved")
+
+    def _complete(user_id, key, draft_id, response_json, *, supabase):
+        calls["complete"].append((key, draft_id, response_json))
+        if complete_effect is not None:
+            raise complete_effect
+        return complete_result
+
+    def _release(user_id, key, draft_id, *, supabase):
+        calls["release"].append((key, draft_id))
+        return True
+
+    monkeypatch.setattr(drafts_module, "reserve_draft_capture", _reserve)
+    monkeypatch.setattr(drafts_module, "complete_draft_capture", _complete)
+    monkeypatch.setattr(drafts_module, "release_draft_capture", _release)
+    return calls
+
+
+def _ps1_parsed_recipe():
+    return {
+        "title": "Stub URL Recipe",
+        "ingredients": _ps1_fake_draft_row()["ingredients"],
+        "steps": [{"position": 1, "instruction": "Mix."}],
+        "servings": "4",
+        "prep_time": None,
+        "cook_time": None,
+        "confidence": 0.95,
+    }
+
+
+def _patch_get_draft(monkeypatch, effect):
+    """Replace the post-failure draft check; ``effect`` is a row or an exception."""
+    import api.routes.drafts as drafts_module
+
+    looked: list[UUID] = []
+
+    def _get(draft_id, *, user_id, supabase):
+        looked.append(draft_id)
+        if isinstance(effect, Exception):
+            raise effect
+        return effect
+
+    monkeypatch.setattr(drafts_module, "get_draft", _get)
+    return looked
+
+
+class TestDraftCaptureIdempotency:
+    _URL = {"url": "https://example.com/recipe"}
+
+    def test_no_header_runs_work_without_touching_idempotency(
+        self, provider_contract_client, monkeypatch
+    ):
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(monkeypatch)
+        resp = provider_contract_client.post("/api/drafts/capture-url", json=self._URL)
+        assert resp.status_code == 200
+        assert calls["create_draft"] == 1
+        assert idem == {"reserve": [], "complete": [], "release": []}
+
+    def test_reserved_runs_once_and_records_the_response(
+        self, provider_contract_client, monkeypatch
+    ):
+        from api.core.draft_idempotency import hash_capture_payload
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert calls["create_draft"] == 1
+        (user, key, payload_hash, draft_id), = idem["reserve"]
+        assert (user, key) == ("00000000-0000-0000-0000-000000000001", _IDEM_KEY)
+        assert payload_hash == hash_capture_payload([b"https://example.com/recipe"])
+        assert isinstance(draft_id, UUID)
+        # The draft is created under the reserved id, and completed under it.
+        assert calls["create_draft_ids"] == [draft_id]
+        assert [(k, d) for k, d, _ in idem["complete"]] == [(_IDEM_KEY, draft_id)]
+        assert idem["complete"][0][2]["id"] == resp.json()["id"]
+        assert idem["release"] == []
+
+    def test_replay_returns_recorded_draft_without_work_or_rate_limit(
+        self, provider_contract_client, monkeypatch
+    ):
+        from api.core.draft_idempotency import Reservation
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        keys = _patch_rate_limit(monkeypatch)
+        idem = _patch_draft_idempotency(
+            monkeypatch, reserve=Reservation("replay", response=_ps1_fake_draft_row())
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == _ps1_fake_draft_row()["id"]
+        assert calls["create_draft"] == 0
+        assert keys == []
+        assert idem["complete"] == [] and idem["release"] == []
+
+    def test_in_progress_is_409_with_retry_after(self, provider_contract_client, monkeypatch):
+        from api.core.draft_idempotency import IdempotencyInProgressError
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        _patch_draft_idempotency(
+            monkeypatch,
+            reserve=IdempotencyInProgressError("busy", code="IDEMPOTENCY_IN_PROGRESS"),
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "IDEMPOTENCY_IN_PROGRESS"
+        assert resp.headers["Retry-After"] == "5"
+        assert calls["create_draft"] == 0
+
+    def test_payload_mismatch_is_409(self, provider_contract_client, monkeypatch):
+        from api.core.idempotency import IdempotencyConflictError
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        _patch_draft_idempotency(
+            monkeypatch,
+            reserve=IdempotencyConflictError("other payload", code="IDEMPOTENCY_CONFLICT"),
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["code"] == "IDEMPOTENCY_CONFLICT"
+        assert calls["create_draft"] == 0
+
+    def test_idempotency_store_down_is_503_and_creates_nothing(
+        self, provider_contract_client, monkeypatch
+    ):
+        from api.core.idempotency import IdempotencyServiceError
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        _patch_draft_idempotency(
+            monkeypatch, reserve=IdempotencyServiceError("down", code="IDEMPOTENCY_UNAVAILABLE")
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 503
+        assert calls["create_draft"] == 0
+
+    @pytest.mark.parametrize("bad", ["   ", "has space", "tab\tbed"])
+    def test_invalid_key_is_400_before_any_reservation(
+        self, provider_contract_client, monkeypatch, bad
+    ):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(monkeypatch)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers={"Idempotency-Key": bad}
+        )
+        assert resp.status_code == 400
+        assert idem["reserve"] == []
+
+    def test_failure_before_the_insert_releases_without_a_lookup(
+        self, provider_contract_client, monkeypatch
+    ):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        looked = _patch_get_draft(monkeypatch, DraftNotFoundError("none", code="DRAFT_NOT_FOUND"))
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 429
+        (_, _, _, draft_id), = idem["reserve"]
+        assert looked == []
+        assert idem["release"] == [(_IDEM_KEY, draft_id)]
+        assert idem["complete"] == []
+
+    @staticmethod
+    def _rejected_insert(code="23505") -> StorageError:
+        from postgrest.exceptions import APIError
+
+        err = StorageError("Failed to insert draft: APIError", code="DB_INSERT_FAILED")
+        err.__cause__ = APIError({"message": "refused", "code": code})
+        return err
+
+    @pytest.mark.parametrize(
+        "code",
+        ["23505", "22P02", "42501", "40001", "P0001", "0A000", "53100", "54000"],
+    )
+    def test_rejection_codes_prove_a_rollback(self, code):
+        import api.routes.drafts as drafts_module
+
+        assert drafts_module._insert_definitely_rejected(self._rejected_insert(code).__cause__)
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "502", "504", None, "", "2350", "08006", "57P01", "XX000",
+            # Every PostgREST-level code is ambiguous: PGRST111/112 can follow a commit.
+            "PGRST000", "PGRST001", "PGRST100", "PGRST111", "PGRST112", "PGRST204", "PGRST301",
+        ],
+    )
+    def test_other_api_errors_are_ambiguous(self, code):
+        import api.routes.drafts as drafts_module
+
+        assert not drafts_module._insert_definitely_rejected(self._rejected_insert(code).__cause__)
+        assert not drafts_module._insert_definitely_rejected(RuntimeError("x"))
+        assert not drafts_module._insert_definitely_rejected(None)
+
+    @pytest.mark.parametrize("code", ["504", "PGRST111", "PGRST112"])
+    def test_post_commit_capable_errors_keep_reservation_and_images(
+        self, provider_contract_client, monkeypatch, code
+    ):
+        """A gateway 5xx body, or a PostgREST response-building error, also
+        arrives as an APIError; the insert may have committed, so nothing may
+        be released or deleted."""
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_photo_pipeline(monkeypatch, _ps1_parsed_recipe())
+        gateway = self._rejected_insert(code)
+
+        def _gateway(*a, **k):
+            raise gateway
+
+        monkeypatch.setattr(drafts_module, "create_draft", _gateway)
+        _patch_get_draft(monkeypatch, DraftNotFoundError("none", code="DRAFT_NOT_FOUND"))
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("a.jpg", b"first bytes", "image/jpeg"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 500
+        assert provider_contract_client.fake_db.storage.bucket.removed == []
+        assert idem["release"] == []
+
+    def test_insert_rejected_by_the_database_releases(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        rejected = self._rejected_insert()
+
+        def _reject(*a, **k):
+            raise rejected
+
+        monkeypatch.setattr(drafts_module, "create_draft", _reject)
+        looked = _patch_get_draft(monkeypatch, DraftNotFoundError("none", code="DRAFT_NOT_FOUND"))
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 500
+        (_, _, _, draft_id), = idem["reserve"]
+        assert looked == []
+        assert idem["release"] == [(_IDEM_KEY, draft_id)]
+
+    def test_insert_committed_but_call_failed_returns_that_draft(
+        self, provider_contract_client, monkeypatch
+    ):
+        """create_draft raised without a database answer (timeout / lost
+        response) and the row IS visible: no second draft, no release; the
+        committed draft is returned and recorded."""
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        created: list[UUID] = []
+
+        def _create_then_lose(*a, **k):
+            created.append(k["draft_id"])
+            raise StorageError("Failed to insert draft: ReadTimeout", code="DB_INSERT_FAILED")
+
+        monkeypatch.setattr(drafts_module, "create_draft", _create_then_lose)
+        committed_row = dict(_ps1_fake_draft_row())
+        looked = _patch_get_draft(monkeypatch, committed_row)
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == committed_row["id"]
+        assert looked == created
+        assert idem["release"] == []
+        assert [(k, d) for k, d, _ in idem["complete"]] == [(_IDEM_KEY, created[0])]
+
+    @pytest.mark.parametrize(
+        "lookup",
+        [
+            DraftNotFoundError("not visible yet", code="DRAFT_NOT_FOUND"),  # may still commit
+            StorageError("db down", code="DB_ERROR"),  # cannot ask
+        ],
+        ids=["absent", "unknown"],
+    )
+    def test_ambiguous_insert_keeps_the_reservation_even_when_not_visible(
+        self, provider_contract_client, monkeypatch, lookup
+    ):
+        """A timed-out insert can commit after the lookup: never release."""
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+
+        def _lose(*a, **k):
+            raise StorageError("Failed to insert draft: ReadTimeout", code="DB_INSERT_FAILED")
+
+        monkeypatch.setattr(drafts_module, "create_draft", _lose)
+        _patch_get_draft(monkeypatch, lookup)
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 500
+        assert idem["release"] == [] and idem["complete"] == []
+
+    def test_complete_failure_returns_the_draft_and_keeps_the_reservation(
+        self, provider_contract_client, monkeypatch
+    ):
+        """The draft exists; releasing would let a retry create a second one.
+        The row stays pending with our draft id so a retry recovers it."""
+        from api.core.idempotency import IdempotencyServiceError
+
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(
+            monkeypatch,
+            reserve=None,
+            complete_effect=IdempotencyServiceError("down", code="IDEMPOTENCY_UNAVAILABLE"),
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert idem["release"] == []
+
+    def test_complete_without_a_row_still_returns_the_draft(
+        self, provider_contract_client, monkeypatch
+    ):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None, complete_result=False)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert idem["release"] == []
+
+    def test_recover_returns_the_holders_draft_without_work(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+        from api.core.draft_idempotency import Reservation
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        keys = _patch_rate_limit(monkeypatch)
+        recovered_id = UUID(_ps1_fake_draft_row()["id"])
+        loaded: list[tuple[UUID, str]] = []
+
+        def _get_draft(draft_id, *, user_id, supabase):
+            loaded.append((draft_id, str(user_id)))
+            return _ps1_fake_draft_row()
+
+        monkeypatch.setattr(drafts_module, "get_draft", _get_draft)
+        idem = _patch_draft_idempotency(
+            monkeypatch, reserve=Reservation("recover", draft_id=recovered_id)
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == str(recovered_id)
+        assert loaded == [(recovered_id, "00000000-0000-0000-0000-000000000001")]
+        assert calls["create_draft"] == 0
+        assert keys == []
+        assert idem["complete"] == [] and idem["release"] == []
+
+    def test_recover_of_a_deleted_draft_is_404(self, provider_contract_client, monkeypatch):
+        import api.routes.drafts as drafts_module
+        from api.core.draft_idempotency import Reservation
+
+        calls = _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+
+        def _missing(draft_id, *, user_id, supabase):
+            raise DraftNotFoundError("gone", code="DRAFT_NOT_FOUND")
+
+        monkeypatch.setattr(drafts_module, "get_draft", _missing)
+        _patch_draft_idempotency(
+            monkeypatch, reserve=Reservation("recover", draft_id=UUID(_ps1_fake_draft_row()["id"]))
+        )
+        resp = provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        assert resp.status_code == 404
+        assert calls["create_draft"] == 0
+
+    def test_photo_route_identity_covers_every_file_and_the_url(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+        from api.core.draft_idempotency import hash_capture_payload
+
+        _ps1_patch_photo_pipeline(monkeypatch, _ps1_parsed_recipe())
+        created = []
+        monkeypatch.setattr(
+            drafts_module,
+            "create_draft",
+            lambda *a, **k: created.append(k) or _ps1_fake_draft_row(),
+        )
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        files = [
+            ("image", ("a.jpg", b"first bytes", "image/jpeg")),
+            ("image", ("b.jpg", b"second bytes", "image/jpeg")),
+        ]
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=files,
+            data={"url": "https://example.com/recipe"},
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 200
+        normalized = drafts_module._validate_url("https://example.com/recipe")
+        assert idem["reserve"][0][2] == hash_capture_payload(
+            [b"first bytes", b"second bytes", normalized.encode("utf-8")]
+        )
+        assert len(created) == 1
+        assert created[0]["draft_id"] == idem["reserve"][0][3]
+        assert [(k, d) for k, d, _ in idem["complete"]] == [(_IDEM_KEY, idem["reserve"][0][3])]
+
+    def test_photo_route_without_url_hashes_an_empty_url_part(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+        from api.core.draft_idempotency import hash_capture_payload
+
+        _ps1_patch_photo_pipeline(monkeypatch, _ps1_parsed_recipe())
+        monkeypatch.setattr(drafts_module, "create_draft", lambda *a, **k: _ps1_fake_draft_row())
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("a.jpg", b"first bytes", "image/jpeg"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 200
+        assert idem["reserve"][0][2] == hash_capture_payload([b"first bytes", b""])
+
+    def test_photo_route_with_key_limits_new_work_and_releases_on_429(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+
+        uploads: list[str] = []
+        monkeypatch.setattr(
+            drafts_module, "upload_image", lambda *a, **k: uploads.append("x") or "k"
+        )
+        keys = _patch_rate_limit(monkeypatch, _RL_Exceeded("limited", code="RATE_LIMIT_EXCEEDED"))
+        _patch_get_draft(monkeypatch, DraftNotFoundError("none", code="DRAFT_NOT_FOUND"))
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("a.jpg", b"first bytes", "image/jpeg"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 429
+        assert keys == [_RL_USER_KEY]
+        assert uploads == []
+        assert idem["release"] == [(_IDEM_KEY, idem["reserve"][0][3])]
+
+    def test_photo_ambiguous_insert_failure_keeps_uploaded_images(
+        self, provider_contract_client, monkeypatch
+    ):
+        """An insert with an unknown outcome may have committed; its objects
+        must stay (a retry recovers that draft by id)."""
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_photo_pipeline(monkeypatch, _ps1_parsed_recipe())
+
+        def _lose(*a, **k):
+            raise StorageError("Failed to insert draft: ReadTimeout", code="DB_INSERT_FAILED")
+
+        monkeypatch.setattr(drafts_module, "create_draft", _lose)
+        _patch_get_draft(monkeypatch, DraftNotFoundError("none", code="DRAFT_NOT_FOUND"))
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("a.jpg", b"first bytes", "image/jpeg"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 500
+        assert provider_contract_client.fake_db.storage.bucket.removed == []
+        assert idem["release"] == []
+
+    def test_photo_rejected_insert_cleans_up_and_releases(
+        self, provider_contract_client, monkeypatch
+    ):
+        import api.routes.drafts as drafts_module
+
+        _ps1_patch_photo_pipeline(monkeypatch, _ps1_parsed_recipe())
+        rejected = self._rejected_insert()
+
+        def _reject(*a, **k):
+            raise rejected
+
+        monkeypatch.setattr(drafts_module, "create_draft", _reject)
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("a.jpg", b"first bytes", "image/jpeg"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 500
+        assert provider_contract_client.fake_db.storage.bucket.removed == [["user/fake-key.jpg"]]
+        assert idem["release"] == [(_IDEM_KEY, idem["reserve"][0][3])]
+
+    def test_photo_route_validation_still_precedes_reservation(
+        self, provider_contract_client, monkeypatch
+    ):
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        resp = provider_contract_client.post(
+            "/api/drafts/capture",
+            files=[("image", ("bad.txt", b"x", "text/plain"))],
+            headers=_IDEM_HEADER,
+        )
+        assert resp.status_code == 400
+        assert idem["reserve"] == []
+
+    def test_url_only_form_and_json_routes_share_one_identity(
+        self, provider_contract_client, monkeypatch
+    ):
+        _ps1_patch_url_pipeline(monkeypatch, _ps1_parsed_recipe())
+        idem = _patch_draft_idempotency(monkeypatch, reserve=None)
+        provider_contract_client.post(
+            "/api/drafts/capture", data=self._URL, headers=_IDEM_HEADER
+        )
+        provider_contract_client.post(
+            "/api/drafts/capture-url", json=self._URL, headers=_IDEM_HEADER
+        )
+        hashes = [h for _, _, h, _ in idem["reserve"]]
+        assert len(hashes) == 2 and hashes[0] == hashes[1]

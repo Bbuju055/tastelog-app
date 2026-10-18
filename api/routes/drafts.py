@@ -7,9 +7,13 @@ Endpoints for draft capture, review, confirm, and deletion.
 import logging
 import os
 import tempfile
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from collections.abc import Callable
+from dataclasses import dataclass
+
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field
 from supabase import Client
 
@@ -19,6 +23,15 @@ from api.core.capture_wire import (
     unreadable_http_exception as _unreadable_http_exception,
 )
 from api.core.config import get_settings
+from api.core.draft_idempotency import (
+    IdempotencyInProgressError,
+    InvalidIdempotencyKeyError,
+    clean_idempotency_key,
+    complete_draft_capture,
+    hash_capture_payload,
+    release_draft_capture,
+    reserve_draft_capture,
+)
 from api.core.drafts import confirm_draft, create_draft, delete_draft, get_draft, list_drafts
 from api.core.exceptions import (
     DraftExpiredError,
@@ -29,6 +42,7 @@ from api.core.exceptions import (
     StorageError,
     URLFetchError,
 )
+from api.core.idempotency import IdempotencyConflictError, IdempotencyServiceError
 from api.core.parser import get_default_config, parse_recipe_image, parse_recipe_images
 from api.core.recipes import get_recipe, upload_image
 from api.core.token_auth import (
@@ -147,14 +161,221 @@ def _enforce_capture_rate_limit(user_id: UUID, db: Client) -> None:
         raise HTTPException(status_code=503, detail=str(e))
 
 
+# Optional on both draft capture routes until every client sends it; a client
+# that omits it gets today's non-idempotent behaviour unchanged.
+_IDEMPOTENCY_HEADER = Header(default=None, alias="Idempotency-Key", max_length=100)
+
+# A retry with the same key while the first attempt is still running: tell
+# the client when to come back rather than making it guess.
+_IN_PROGRESS_RETRY_AFTER_SECONDS = "5"
+
+
+@dataclass
+class _CaptureAttempt:
+    """What the capture work got as far as, for deciding whether a failed
+    attempt may have left a draft behind.
+
+    insert_attempted: create_draft was called. Until the database answers,
+        the row may or may not have committed.
+    insert_rejected: the database answered with a code that proves the row
+        was refused and rolled back (see _insert_definitely_rejected).
+    """
+
+    insert_attempted: bool = False
+    insert_rejected: bool = False
+
+
+# SQLSTATE classes that prove Postgres refused the statement and rolled it
+# back, so no row can exist: 22 (data), 23 (integrity), 42 (syntax / access
+# rule), 40 (transaction rollback), 0A (unsupported), 53/54 (resource / limit),
+# P0 (PL/pgSQL RAISE). Nothing else counts: PostgREST's own PGRSTxxx codes can
+# be produced after the transaction committed (e.g. PGRST111/112 while building
+# the response), gateway 5xx bodies, connection errors, malformed responses,
+# 08xxx, 57xxx and XXxxx all leave the outcome unknown.
+_REJECTED_SQLSTATE_CLASSES = ("22", "23", "42", "40", "0A", "53", "54", "P0")
+
+
+def _insert_definitely_rejected(cause: BaseException | None) -> bool:
+    if not isinstance(cause, APIError) or not isinstance(cause.code, str):
+        return False
+    code = cause.code.strip().upper()
+    return len(code) == 5 and code[:2] in _REJECTED_SQLSTATE_CLASSES
+
+
+def _create_draft_tracked(attempt: _CaptureAttempt, **kwargs) -> dict:
+    """create_draft, recording on ``attempt`` whether a failure is a confirmed
+    rejection or an unknown outcome (timeout, lost connection, gateway error)."""
+    attempt.insert_attempted = True
+    try:
+        return create_draft(**kwargs)
+    except StorageError as e:
+        attempt.insert_rejected = _insert_definitely_rejected(e.__cause__)
+        raise
+
+
+def _committed_draft(user_id: UUID, draft_id: UUID, db: Client) -> dict | None:
+    """The reserved draft's row if it is visible now, else None (not found, or
+    the database could not be asked; both mean "not visible")."""
+    try:
+        return get_draft(draft_id, user_id=user_id, supabase=db)
+    except DraftNotFoundError:
+        return None
+    except Exception as e:  # StorageError or anything else from the client
+        logger.error(f"Idempotency post-failure draft check failed: {type(e).__name__}")
+        return None
+
+
+def _clean_idempotency_header(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    try:
+        return clean_idempotency_key(raw)
+    except InvalidIdempotencyKeyError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def _run_idempotent(
+    *,
+    user_id: UUID,
+    idempotency_key: str | None,
+    payload_hash: str,
+    db: Client,
+    work: Callable[[UUID, _CaptureAttempt], DraftResponse],
+) -> DraftResponse:
+    """Run ``work(draft_id, attempt)`` once per (user, key, payload); replay afterwards.
+
+    The draft id is minted here and the work must create the draft under it,
+    through _create_draft_tracked so ``attempt`` records how far it got.
+    Without a key the work simply runs. With one, the key is reserved
+    atomically first (migration 028) and the reservation records the draft
+    id: a replay returns the recorded response without running the work or
+    the rate limiter; a holder that wrote its draft but never completed is
+    recovered by returning that exact draft; a concurrent holder is 409; a
+    different payload under the same key is 409.
+
+    A failure of the work releases this request's own reservation only when
+    no draft can exist: the failure came before the insert, or the database
+    rejected the insert. An insert with an unknown outcome (timeout, lost
+    connection) keeps the reservation: if the row is already visible it is
+    returned as the result; if not, it may still commit, and a retry then
+    finds it through the recover path instead of creating a second draft.
+    A failure to complete never releases either.
+    """
+    draft_id = uuid4()
+    attempt = _CaptureAttempt()
+    if idempotency_key is None:
+        return work(draft_id, attempt)
+
+    log_extra = {"user_id": str(user_id), "idempotency_key_prefix": idempotency_key[:8]}
+    try:
+        reservation = reserve_draft_capture(
+            user_id, idempotency_key, payload_hash, draft_id, supabase=db
+        )
+    except IdempotencyInProgressError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": e.code, "message": str(e)},
+            headers={"Retry-After": _IN_PROGRESS_RETRY_AFTER_SECONDS},
+        )
+    except IdempotencyConflictError as e:
+        raise HTTPException(status_code=409, detail={"code": e.code, "message": str(e)})
+    except IdempotencyServiceError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    if reservation.outcome == "replay":
+        assert reservation.response is not None  # guaranteed by the helper
+        return DraftResponse.model_validate(reservation.response)
+    if reservation.outcome == "recover":
+        assert reservation.draft_id is not None  # guaranteed by the helper
+        try:
+            draft = get_draft(reservation.draft_id, user_id=user_id, supabase=db)
+        except DraftNotFoundError:
+            # Existed when the RPC looked, gone now (the user deleted it).
+            # This key can neither recover nor be reused; a new capture
+            # is a new attempt with a new key.
+            raise HTTPException(
+                status_code=404,
+                detail="The draft created by this Idempotency-Key no longer exists",
+            )
+        except StorageError as e:
+            logger.error(f"Idempotency recover read failed: {e.code}: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+        return DraftResponse.model_validate(draft)
+
+    try:
+        response = work(draft_id, attempt)
+    except BaseException:
+        if not attempt.insert_attempted or attempt.insert_rejected:
+            # No draft can exist: free the key for the client's retry.
+            try:
+                release_draft_capture(user_id, idempotency_key, draft_id, supabase=db)
+            except IdempotencyServiceError:
+                # Stays pending until it expires; a retry of this key gets
+                # 409 meanwhile. Nothing was created, nothing is duplicated.
+                logger.error("draft_idempotency_release_failed", extra=log_extra)
+            raise
+        # The insert's outcome is unknown: the statement may still commit
+        # after a timeout, so the reservation is kept whatever the lookup
+        # says. If the row is already visible the capture succeeded as far
+        # as the client is concerned: hand it back and record it.
+        committed = _committed_draft(user_id, draft_id, db)
+        if committed is None:
+            logger.error("draft_idempotency_insert_outcome_unknown", extra=log_extra)
+            raise
+        logger.warning("draft_idempotency_recovered_after_failure", extra=log_extra)
+        response = DraftResponse.model_validate(committed)
+
+    try:
+        completed = complete_draft_capture(
+            user_id, idempotency_key, draft_id, response.model_dump(mode="json"), supabase=db
+        )
+    except IdempotencyServiceError:
+        # The draft exists and the client gets it. The row stays pending with
+        # the draft id, so a retry recovers this same draft instead of
+        # creating another; replay just costs one extra read.
+        logger.error("draft_idempotency_complete_failed", extra=log_extra)
+    else:
+        if not completed:
+            # Our pending row is gone (expired mid-capture). The draft still
+            # exists and is returned; a retry past expiry is a new attempt.
+            logger.warning("draft_idempotency_complete_no_row", extra=log_extra)
+    return response
+
+
 def _handle_url_capture(
     url: str,
     *,
     user_id: UUID,
     db: Client,
+    idempotency_key: str | None = None,
 ) -> DraftResponse:
     """Shared logic for URL capture (used by both capture-url and capture endpoints)."""
     normalized = _validate_url(url)
+    return _run_idempotent(
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        payload_hash=hash_capture_payload([normalized.encode("utf-8")]),
+        db=db,
+        work=lambda draft_id, attempt: _capture_url(
+            url, normalized, user_id=user_id, db=db, draft_id=draft_id, attempt=attempt
+        ),
+    )
+
+
+def _capture_url(
+    url: str,
+    normalized: str,
+    *,
+    user_id: UUID,
+    db: Client,
+    draft_id: UUID,
+    attempt: _CaptureAttempt,
+) -> DraftResponse:
+    """URL capture proper: limit, duplicate check, extract, create the draft.
+
+    ``normalized`` is used for the duplicate check and as the draft's
+    source_url; the extractor receives the URL as given, as before.
+    """
     _enforce_capture_rate_limit(user_id, db)
 
     # Duplicate check
@@ -203,7 +424,9 @@ def _handle_url_capture(
         )
 
     # Create draft
-    draft = create_draft(
+    draft = _create_draft_tracked(
+        attempt,
+        draft_id=draft_id,
         user_id=user_id,
         image_storage_keys=[],
         source_url=normalized,
@@ -229,9 +452,19 @@ async def capture_url_endpoint(
     body: CaptureURLRequest,
     user_id: UUID = Depends(get_current_user_id),
     db: Client = Depends(get_db),
+    idempotency_key: str | None = _IDEMPOTENCY_HEADER,
 ) -> DraftResponse:
-    """Capture a recipe from a URL (JSON body, JWT auth)."""
-    return _handle_url_capture(body.url, user_id=user_id, db=db)
+    """Capture a recipe from a URL (JSON body, JWT auth).
+
+    Optional ``Idempotency-Key`` header: a retry with the same key and URL
+    returns the same draft instead of creating another.
+    """
+    return _handle_url_capture(
+        body.url,
+        user_id=user_id,
+        db=db,
+        idempotency_key=_clean_idempotency_header(idempotency_key),
+    )
 
 
 @router.post("/capture", response_model=DraftResponse)
@@ -240,6 +473,7 @@ async def capture_draft_endpoint(
     url: str | None = Form(default=None),
     user_id: UUID = Depends(get_user_id_jwt_or_capture_token),
     db: Client = Depends(get_db),
+    idempotency_key: str | None = _IDEMPOTENCY_HEADER,
 ) -> DraftResponse:
     """Upload and parse recipe image(s), or capture from URL.
 
@@ -250,7 +484,11 @@ async def capture_draft_endpoint(
 
     Accepts 1-5 images via repeated ``image`` form fields.
     Optional ``url`` form field for source attribution or URL-only capture.
+    Optional ``Idempotency-Key`` header: a retry with the same key and the
+    same files + URL returns the same draft instead of creating another.
     """
+    idempotency_key = _clean_idempotency_header(idempotency_key)
+
     # --- Determine capture path ---
     has_images = len(image) > 0
 
@@ -260,7 +498,9 @@ async def capture_draft_endpoint(
 
     # Case 2: URL only (no images) — delegate to shared URL capture logic
     if not has_images and url:
-        return _handle_url_capture(url, user_id=user_id, db=db)
+        return _handle_url_capture(
+            url, user_id=user_id, db=db, idempotency_key=idempotency_key
+        )
 
     # Case 1: Images present (with or without URL)
     # Normalize source_url if provided (D8: preserve URL alongside images)
@@ -285,34 +525,85 @@ async def capture_draft_endpoint(
                 detail=f"Invalid file type: {f.content_type}. Allowed: {sorted(ALLOWED_CONTENT_TYPES)}",
             )
 
-    # Count and type checks above are free; limit before copying up to
-    # MAX_UPLOAD_SIZE into memory, uploading, or calling the model.
-    _enforce_capture_rate_limit(user_id, db)
+    if idempotency_key is None:
+        # Count and type checks above are free; limit before copying up to
+        # MAX_UPLOAD_SIZE into memory, uploading, or calling the model.
+        _enforce_capture_rate_limit(user_id, db)
+        file_contents = await _read_images(image)
+        return _capture_images(
+            file_contents,
+            source_url=source_url,
+            user_id=user_id,
+            db=db,
+            draft_id=uuid4(),
+            attempt=_CaptureAttempt(),
+        )
 
+    # With a key the payload identity (every file's bytes + the URL) is needed
+    # before reserving, and a replay must not be rate limited, so the bytes are
+    # read first and the limiter runs only for new work.
+    file_contents = await _read_images(image)
+    payload_hash = hash_capture_payload(
+        [content for content, _ in file_contents] + [(source_url or "").encode("utf-8")]
+    )
+
+    def _work(draft_id: UUID, attempt: _CaptureAttempt) -> DraftResponse:
+        _enforce_capture_rate_limit(user_id, db)
+        return _capture_images(
+            file_contents,
+            source_url=source_url,
+            user_id=user_id,
+            db=db,
+            draft_id=draft_id,
+            attempt=attempt,
+        )
+
+    return _run_idempotent(
+        user_id=user_id,
+        idempotency_key=idempotency_key,
+        payload_hash=payload_hash,
+        db=db,
+        work=_work,
+    )
+
+
+async def _read_images(image: list[UploadFile]) -> list[tuple[bytes, str]]:
+    """Read every upload into memory, enforcing per-file and cumulative limits."""
+    max_per_file = 10 * 1024 * 1024  # 10 MB per file
+    file_contents: list[tuple[bytes, str]] = []
+    total_size = 0
+    for f in image:
+        content = await f.read()
+        if len(content) > max_per_file:
+            raise HTTPException(
+                status_code=413,
+                detail="One of the files exceeds 10 MB limit",
+            )
+        total_size += len(content)
+        if total_size > MAX_UPLOAD_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Total upload size exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
+            )
+        assert f.content_type is not None  # validated above
+        file_contents.append((content, f.content_type))
+    return file_contents
+
+
+def _capture_images(
+    file_contents: list[tuple[bytes, str]],
+    *,
+    source_url: str | None,
+    user_id: UUID,
+    db: Client,
+    draft_id: UUID,
+    attempt: _CaptureAttempt,
+) -> DraftResponse:
+    """Image capture proper: temp files, storage upload, parse, create the draft."""
     tmp_paths: list[str] = []
     storage_keys: list[str] = []
 
     try:
-        # --- Read all files, enforce cumulative size limit ---
-        max_per_file = 10 * 1024 * 1024  # 10 MB per file
-        file_contents: list[tuple[bytes, str]] = []
-        total_size = 0
-        for f in image:
-            content = await f.read()
-            if len(content) > max_per_file:
-                raise HTTPException(
-                    status_code=413,
-                    detail="One of the files exceeds 10 MB limit",
-                )
-            total_size += len(content)
-            if total_size > MAX_UPLOAD_SIZE:
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"Total upload size exceeds {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
-                )
-            assert f.content_type is not None  # validated above
-            file_contents.append((content, f.content_type))
-
         # --- Write temp files + upload to storage ---
         for content, content_type in file_contents:
             suffix = _get_suffix(content_type)
@@ -345,7 +636,9 @@ async def capture_draft_endpoint(
         parsed = canonicalize_parsed_recipe(parsed)
 
         # --- Create draft (with source_url if URL was provided alongside images) ---
-        draft = create_draft(
+        draft = _create_draft_tracked(
+            attempt,
+            draft_id=draft_id,
             user_id=user_id,
             image_storage_keys=storage_keys,
             source_url=source_url,
@@ -407,7 +700,7 @@ async def capture_draft_endpoint(
             },
         )
     except StorageError as e:
-        if storage_keys:
+        if storage_keys and (not attempt.insert_attempted or attempt.insert_rejected):
             try:
                 db.storage.from_(_BUCKET_RECIPE_IMAGES).remove(storage_keys)
             except Exception:
@@ -417,7 +710,7 @@ async def capture_draft_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        if storage_keys:
+        if storage_keys and (not attempt.insert_attempted or attempt.insert_rejected):
             try:
                 db.storage.from_(_BUCKET_RECIPE_IMAGES).remove(storage_keys)
             except Exception:

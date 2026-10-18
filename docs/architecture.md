@@ -19,7 +19,8 @@ tastelog/
 │   │   ├── supabase_user_client.py # User-scoped client (per-request, RLS)
 │   │   ├── jwt.py                # JWKS-based JWT verification (RS256/ES256)
 │   │   ├── token_auth.py         # Capture token auth + rate limiting
-│   │   ├── idempotency.py        # Postgres-backed idempotency
+│   │   ├── idempotency.py        # Token-scoped idempotency (Shortcuts route)
+│   │   ├── draft_idempotency.py  # User-scoped, atomic idempotency (draft routes, 028)
 │   │   ├── image_encoding.py     # Image/PDF → base64 for Claude Vision
 │   │   ├── parser.py             # Claude Vision recipe parsing
 │   │   ├── recipes.py            # Recipe CRUD + storage
@@ -246,6 +247,7 @@ Index: `(token_hash, request_at DESC)` for sliding window queries.
 |----------|---------|------|
 | `confirm_recipe_draft(...)` | Atomic draft → recipe conversion | User JWT (`auth.uid()`) |
 | `search_recipes_fts(...)` | Full-text search with ranking | Service role |
+| `reserve_draft_capture(...)`, `complete_draft_capture(...)`, `release_draft_capture(...)` | Atomic Idempotency-Key reservation for draft capture (028) | Service role |
 
 ### Storage Bucket
 - Name: `recipe-images`

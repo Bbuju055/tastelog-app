@@ -67,6 +67,7 @@ def create_draft(
     steps: list | None = None,
     raw_model_json: dict | None = None,
     source_url: str | None = None,
+    draft_id: UUID | None = None,
     supabase: Client,
     logger: logging.Logger,
 ) -> dict:
@@ -75,6 +76,8 @@ def create_draft(
 
     Uses service client with user_id for ownership.
     Caller is responsible for upload and parsing.
+    ``draft_id`` lets the idempotent capture path create the draft under the
+    id it reserved (api/core/draft_idempotency.py); otherwise the DB assigns one.
     """
     draft_data = {
         "user_id": str(user_id),
@@ -91,14 +94,19 @@ def create_draft(
         "model_version": model_version,
         "parser_version": parser_version,
     }
+    if draft_id is not None:
+        draft_data["id"] = str(draft_id)
 
     try:
         result = supabase.table("recipe_drafts").insert(draft_data).execute()
     except Exception as e:
+        # ``from e`` keeps the cause: a PostgREST APIError means the database
+        # answered and rejected the row; anything else (timeout, connection
+        # loss) leaves it unknown whether the insert committed.
         raise StorageError(
             f"Failed to insert draft: {type(e).__name__}: {str(e)[:100]}",
             code="DB_INSERT_FAILED",
-        )
+        ) from e
 
     if not result.data:
         raise StorageError("Draft insert returned no data", code="DB_INSERT_FAILED")
