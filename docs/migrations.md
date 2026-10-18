@@ -182,7 +182,7 @@ the guard expects (020 under its production alias, the skipped 004 as
 not applied), so `/health/ready` reports `compatible` against the fresh
 database. `tests/db/run_db_proof.sh` runs the same base
 and chain on the pinned production Postgres image under Docker, with no
-migration skipped, before proving 026 and 027.
+migration skipped, before proving 026, 027 and 028.
 
 ## Baseline (pre-ledger history)
 

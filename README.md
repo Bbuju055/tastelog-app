@@ -87,7 +87,7 @@ npx expo start --ios
 | Backend | pytest | 871 | placeholder `.env` only |
 | Web | vitest | 170 | nothing |
 | Mobile | jest | 1306 | nothing |
-| Migrations | real PostgreSQL 17.6 (`tests/db/run_db_proof.sh`) | base schema + 003..027, concurrency batteries | Docker |
+| Migrations | real PostgreSQL 17.6 (`tests/db/run_db_proof.sh`) | base schema + 003..028, concurrency batteries | Docker |
 
 All four run in [CI](.github/workflows/ci.yml) on every push. Lint and strict TypeScript checks run alongside the web and mobile suites, and the web job also runs `next build`. The web review-and-confirm journey is covered without a browser and without a database: `tastelog-web/src/lib/drafts/reviewPatch.test.ts` proves the form's adapter and patch builder, and the confirm tests in `tests/test_drafts.py` prove the route forwards those overrides to the confirm RPC (mocked). Persistence and reload through a real database are not covered by an automated test; they were checked by hand against the local demo stack.
 

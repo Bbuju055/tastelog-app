@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/db/run_db_proof.sh
-# Real-PostgreSQL proof harness for migrations 026 (Issue 1) and 027
-# (Issue 3).
+# Real-PostgreSQL proof harness for migrations 026 (Issue 1), 027
+# (Issue 3) and 028 (draft capture idempotency).
 #
 # Spins up the Supabase Postgres image at production's version (17.6),
 # rebuilds the pre-026 schema (reconstructed base + the repo's actual
@@ -427,6 +427,41 @@ SELECT _assert(
   + (SELECT count(*) FROM recipe_steps WHERE recipe_id = '$CED3')
   + (SELECT count(*) FROM recipe_step_ingredients WHERE recipe_id = '$CED3') = 0,
   'C-ED3/middle: converged to fully deleted, no partial resurrection');
+SQL
+
+# ---------------------------------------------------------------------------
+# Migration 028: draft capture idempotency.
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "== APPLY MIGRATION 028 =="
+PSQL < "$REPO/migrations/028_draft_capture_idempotency.sql"
+
+echo "== 028 single-session proof batteries (I0..I14) =="
+PSQL < "$HERE/proof_migration_028.sql"
+
+echo "== C-ID1: concurrent reservations of one key (exactly one wins) =="
+# A reserves inside an open transaction; B's insert blocks on the primary
+# key until A commits, then must see A's pending row and report in_progress.
+PSQL <<'SQL' &
+BEGIN;
+SELECT reserve_draft_capture('00000000-0000-4000-8000-00000000000a'::uuid, 'race', 'h', gen_random_uuid());
+SELECT _hold_until_blocked();
+COMMIT;
+SQL
+A_PID=$!
+wait_for_holder
+B_OUT="$(PSQL -t -A -c "SELECT reserve_draft_capture(
+  '00000000-0000-4000-8000-00000000000a'::uuid, 'race', 'h', gen_random_uuid()) ->> 'outcome';" | tail -1)"
+wait "$A_PID"
+echo "   second reserver outcome: $B_OUT"
+PSQL <<SQL
+SELECT _assert('$B_OUT' = 'in_progress',
+  'C-ID1: loser of the race sees in_progress, never reserved');
+SELECT _assert(
+  (SELECT count(*) FROM draft_capture_idempotency
+   WHERE user_id = '00000000-0000-4000-8000-00000000000a' AND idempotency_key = 'race') = 1,
+  'C-ID1: exactly one reservation row');
 SQL
 
 echo ""
