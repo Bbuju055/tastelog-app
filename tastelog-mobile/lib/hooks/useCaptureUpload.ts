@@ -12,16 +12,20 @@ function asFormDataFile(file: UploadFile): Blob {
 
 type CaptureUploadInput = {
   images: UploadFile[];
+  /** Minted by the screen when the images are chosen and kept until they
+   *  change, so "Try Again" replays the same attempt instead of creating a
+   *  second draft. */
+  idempotencyKey: string;
 };
 
 export function useCaptureUpload() {
   return useMutation<DraftResponse, ApiError, CaptureUploadInput>({
-    mutationFn: ({ images }) => {
+    mutationFn: ({ images, idempotencyKey }) => {
       const form = new FormData();
       for (const img of images) {
         form.append("image", asFormDataFile(img));
       }
-      return captureDraft(form);
+      return captureDraft(form, idempotencyKey);
     },
     // 15.2 Gate A (F2): the success haptic is owned by SuccessBeat — the
     // visible acknowledgment every successful capture mounts. A hook-level

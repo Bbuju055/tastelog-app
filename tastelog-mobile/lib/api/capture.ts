@@ -5,7 +5,8 @@ import type { UploadFile } from "./uploadTypes";
 /** Vision parsing is synchronous; typical 30-60s, tail up to 90s. */
 const CAPTURE_TIMEOUT_MS = 120_000;
 
-function uuidv4(): string {
+/** RFC4122 v4 id; used as the Idempotency-Key for capture attempts. */
+export function uuidv4(): string {
   const cryptoAny = globalThis.crypto as
     | undefined
     | { randomUUID?: () => string; getRandomValues?: (a: Uint8Array) => Uint8Array };

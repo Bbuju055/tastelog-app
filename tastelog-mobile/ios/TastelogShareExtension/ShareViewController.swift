@@ -426,6 +426,10 @@ final class ShareViewController: UIViewController {
         request.timeoutInterval = 120.0
 
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // One key per upload attempt: a retry of this attempt must reuse it so the
+        // backend returns the same draft instead of creating another. The extension
+        // does not retry on its own, so a fresh key per upload() call is correct.
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "Idempotency-Key")
 
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")

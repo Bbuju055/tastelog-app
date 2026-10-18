@@ -80,11 +80,17 @@ export async function listDrafts() {
 /** Vision parsing is synchronous; 30-60s typical, 90s tail. */
 const CAPTURE_TIMEOUT_MS = 120_000;
 
-export async function captureDraft(form: FormData) {
+/**
+ * `idempotencyKey` identifies one capture attempt: a retry of that attempt
+ * must send the same key so the backend returns the same draft instead of
+ * creating another. Callers mint one key per attempt (uuidv4()).
+ */
+export async function captureDraft(form: FormData, idempotencyKey: string) {
   const draft = await apiFetch({
     path: "/api/drafts/capture",
     method: "POST",
     body: form,
+    headers: { "Idempotency-Key": idempotencyKey },
     schema: draftResponseSchema,
     authMode: "user",
     auth: "required",
@@ -93,11 +99,12 @@ export async function captureDraft(form: FormData) {
   return draft;
 }
 
-export async function captureURL(url: string) {
+export async function captureURL(url: string, idempotencyKey: string) {
   return apiFetch({
     path: "/api/drafts/capture-url",
     method: "POST",
     body: { url },
+    headers: { "Idempotency-Key": idempotencyKey },
     schema: draftResponseSchema,
     authMode: "user",
     auth: "required",

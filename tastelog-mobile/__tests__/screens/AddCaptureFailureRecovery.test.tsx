@@ -180,6 +180,58 @@ describe("offline photo capture (screen-level)", () => {
     expect(view.getByText("Try Again")).toBeTruthy();
   });
 
+  test("Try Again re-sends the same Idempotency-Key; new photos mint a new one", async () => {
+    const view = renderWithTheme(<AddScreen />);
+    await settle();
+
+    const options = await selectPhotoAndUpload(view);
+    const firstVars = mockUploadMutation.mutate.mock.calls[0][0] as {
+      idempotencyKey: string;
+      images: { uri: string }[];
+    };
+    expect(firstVars.idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    const err = networkError();
+    mockUploadMutation.error = err;
+    await act(async () => {
+      options.onError(err);
+    });
+    view.rerender(<AddScreen />);
+    await settle();
+
+    fireEvent.press(view.getByText("Try Again"));
+    await settle();
+
+    expect(mockUploadMutation.mutate).toHaveBeenCalledTimes(2);
+    const retryVars = mockUploadMutation.mutate.mock.calls[1][0] as {
+      idempotencyKey: string;
+      images: { uri: string }[];
+    };
+    // Same attempt: same key AND the same converted file (payload identity
+    // is the bytes, so the retry must not re-encode).
+    expect(retryVars.idempotencyKey).toBe(firstVars.idempotencyKey);
+    expect(retryVars.images.map((i) => i.uri)).toEqual(firstVars.images.map((i) => i.uri));
+
+    // A different selection is a new attempt with a new key.
+    mockUploadMutation.error = null;
+    mockLaunchLibrary.mockImplementationOnce(async () => ({
+      canceled: false,
+      assets: [{ uri: "file:///p2.jpg", assetId: "a2", fileName: "p2.jpg" }],
+    }));
+    view.rerender(<AddScreen />);
+    await settle();
+    fireEvent.press(view.getByText("Change Photos"));
+    await settle();
+    fireEvent.press(view.getByText("Upload & Capture"));
+    await settle();
+
+    expect(mockUploadMutation.mutate).toHaveBeenCalledTimes(3);
+    const newVars = mockUploadMutation.mutate.mock.calls[2][0] as { idempotencyKey: string };
+    expect(newVars.idempotencyKey).not.toBe(firstVars.idempotencyKey);
+  });
+
   test("network failure with a server-side draft recovers it (View Draft navigates)", async () => {
     mockListDrafts.mockImplementation(async () => [
       {

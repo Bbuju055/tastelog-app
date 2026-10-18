@@ -30,6 +30,7 @@ React Native mobile app for Tastelog recipe capture.
 - Supabase session is stored in AsyncStorage (app-only, not shared with extension).
 - Token CRUD (list, create, revoke) uses user JWT auth.
 - Capture calls use capture token auth + `Idempotency-Key` header.
+- Draft capture (app and share extension) sends an `Idempotency-Key` per attempt; the API replays the same draft on a retry (migration 028).
 
 ---
 

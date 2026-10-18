@@ -17,19 +17,23 @@ export default function AddPage() {
   const router = useRouter();
 
   const [file, setFile] = useState<File | null>(null);
+  // Idempotency-Key for the current attempt: minted when a file is chosen and
+  // kept until the file changes, so clicking Capture again after an error
+  // replays the same attempt (same draft) instead of creating a second one.
+  const [captureKey, setCaptureKey] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const filename = useMemo(() => file?.name ?? null, [file]);
 
   const captureMutation = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error("No file selected.");
+      if (!file || !captureKey) throw new Error("No file selected.");
 
       // Backend expects multipart form. Field name is "image" (verified in your curl).
       const form = new FormData();
       form.append("image", file);
 
-      return captureDraft(form);
+      return captureDraft(form, captureKey);
     },
     onSuccess: (draft) => {
       const draftId = draft?.id;
@@ -72,6 +76,7 @@ export default function AddPage() {
             onFileSelected={(f) => {
               setErrorMsg(null);
               setFile(f);
+              setCaptureKey(crypto.randomUUID());
             }}
           />
 

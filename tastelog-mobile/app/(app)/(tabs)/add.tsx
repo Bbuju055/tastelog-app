@@ -20,6 +20,7 @@ import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import * as Linking from "expo-linking";
 import * as FileSystem from "expo-file-system/legacy";
 import { useCaptureUpload, useCaptureURL } from "../../../lib/hooks";
+import { uuidv4 } from "../../../lib/api/capture";
 import { listDrafts } from "../../../lib/api/endpoints";
 import { useSession } from "../../../lib/auth/context";
 import { Screen, Button, SkeletonCaptureScene, SuccessBeat } from "../../../components";
@@ -424,6 +425,16 @@ export default function AddScreen() {
   const [fileSizeError, setFileSizeError] = useState<string | null>(null);
   const [recoveredDraftId, setRecoveredDraftId] = useState<string | null>(null);
   const captureStartRef = useRef<number | null>(null);
+  // Idempotency-Key per capture attempt. The photo key follows the selected
+  // images and the URL key follows the typed URL: "Try Again" on the same
+  // input re-sends the same key, so the backend hands back the same draft
+  // instead of creating a second one; changing the input starts a new attempt.
+  const photoKeyRef = useRef<string>(uuidv4());
+  const urlKeyRef = useRef<string>(uuidv4());
+  // JPEG re-encoding is not byte-stable, and the key's payload identity is
+  // the file bytes: reuse the converted file for a retry of the same asset.
+  const jpegCacheRef = useRef(new Map<string, string>());
+  const preparingRef = useRef(false);
   const { stageIndex, stageText } = useCaptureStage(
     mutation.isPending,
     selectedImages.length,
@@ -598,80 +609,101 @@ export default function AddScreen() {
 
   // --- Upload ---
 
+  useEffect(() => {
+    photoKeyRef.current = uuidv4();
+  }, [selectedImages]);
+  useEffect(() => {
+    urlKeyRef.current = uuidv4();
+  }, [urlInput]);
+
   const handleUpload = useCallback(async () => {
-    if (selectedImages.length === 0 || uiLocked) return;
+    if (selectedImages.length === 0 || uiLocked || preparingRef.current) return;
+    // Snapshot the selection AND its key before the first await: the controls
+    // stay enabled while the JPEGs are prepared, and a selection change in
+    // that window rotates the key. The bytes and the key must belong to the
+    // same attempt, and two preparations must not overlap.
+    const images = selectedImages;
+    const idempotencyKey = photoKeyRef.current;
+    preparingRef.current = true;
+    try {
+      const jpegFiles: UploadFile[] = [];
+      let totalSize = 0;
 
-    const jpegFiles: UploadFile[] = [];
-    let totalSize = 0;
-
-    for (let i = 0; i < selectedImages.length; i++) {
-      const asset = selectedImages[i];
-      const jpegUri = await ensureJpeg(asset.uri);
-
-      const fileInfo = await FileSystem.getInfoAsync(jpegUri);
-      if (fileInfo.exists && "size" in fileInfo) {
-        if (fileInfo.size > MAX_FILE_SIZE_BYTES) {
-          setFileSizeError(
-            selectedImages.length > 1
-              ? `Image ${i + 1} is too large (over 10 MB). Try a smaller photo.`
-              : "This image is too large (over 10 MB). Try cropping or using a smaller photo.",
-          );
-          return;
+      for (let i = 0; i < images.length; i++) {
+        const asset = images[i];
+        let jpegUri = jpegCacheRef.current.get(asset.uri);
+        if (!jpegUri) {
+          jpegUri = await ensureJpeg(asset.uri);
+          jpegCacheRef.current.set(asset.uri, jpegUri);
         }
-        totalSize += fileInfo.size;
+
+        const fileInfo = await FileSystem.getInfoAsync(jpegUri);
+        if (fileInfo.exists && "size" in fileInfo) {
+          if (fileInfo.size > MAX_FILE_SIZE_BYTES) {
+            setFileSizeError(
+              images.length > 1
+                ? `Image ${i + 1} is too large (over 10 MB). Try a smaller photo.`
+                : "This image is too large (over 10 MB). Try cropping or using a smaller photo.",
+            );
+            return;
+          }
+          totalSize += fileInfo.size;
+        }
+
+        jpegFiles.push({
+          uri: jpegUri,
+          type: "image/jpeg",
+          name: deriveFileName(asset, i),
+        });
       }
 
-      jpegFiles.push({
-        uri: jpegUri,
-        type: "image/jpeg",
-        name: deriveFileName(asset, i),
-      });
-    }
+      if (totalSize > MAX_TOTAL_SIZE_BYTES) {
+        setFileSizeError("Total image size exceeds 20 MB. Try fewer or smaller images.");
+        return;
+      }
+      setFileSizeError(null);
 
-    if (totalSize > MAX_TOTAL_SIZE_BYTES) {
-      setFileSizeError("Total image size exceeds 20 MB. Try fewer or smaller images.");
-      return;
-    }
-    setFileSizeError(null);
+      setRecoveredDraftId(null);
 
-    setRecoveredDraftId(null);
+      const captureStartedAt = Date.now();
+      captureStartRef.current = captureStartedAt;
 
-    const captureStartedAt = Date.now();
-    captureStartRef.current = captureStartedAt;
-
-    mutation.mutate(
-      { images: jpegFiles },
-      {
-        onSuccess: (result) => {
-          // Beat state FIRST — image clearing, mutation reset, and the
-          // navigation all happen in the exactly-once completion path.
-          captureStartRef.current = null;
-          setPendingBeat({
-            draftId: result.id,
-            source: "photo",
-            startedAt: Date.now(),
-          });
-        },
-        onError: async (err) => {
-          if (!isApiError(err) || (err.kind !== "timeout" && err.kind !== "network")) return;
-
-          try {
-            const drafts = await listDrafts();
-            const recent = drafts.find((d) => {
-              const createdAt = new Date(d.created_at).getTime();
-              return createdAt > captureStartedAt
-                && createdAt - captureStartedAt < DRAFT_RECOVERY_WINDOW_MS;
+      mutation.mutate(
+        { images: jpegFiles, idempotencyKey },
+        {
+          onSuccess: (result) => {
+            // Beat state FIRST — image clearing, mutation reset, and the
+            // navigation all happen in the exactly-once completion path.
+            captureStartRef.current = null;
+            setPendingBeat({
+              draftId: result.id,
+              source: "photo",
+              startedAt: Date.now(),
             });
-            if (recent) {
-              setRecoveredDraftId(recent.id);
-              captureStartRef.current = null;
+          },
+          onError: async (err) => {
+            if (!isApiError(err) || (err.kind !== "timeout" && err.kind !== "network")) return;
+
+            try {
+              const drafts = await listDrafts();
+              const recent = drafts.find((d) => {
+                const createdAt = new Date(d.created_at).getTime();
+                return createdAt > captureStartedAt
+                  && createdAt - captureStartedAt < DRAFT_RECOVERY_WINDOW_MS;
+              });
+              if (recent) {
+                setRecoveredDraftId(recent.id);
+                captureStartRef.current = null;
+              }
+            } catch {
+              // Recovery check failed
             }
-          } catch {
-            // Recovery check failed
-          }
+          },
         },
-      },
-    );
+      );
+    } finally {
+      preparingRef.current = false;
+    }
   }, [selectedImages, mutation, uiLocked]);
 
   // --- URL capture ---
@@ -729,7 +761,7 @@ export default function AddScreen() {
     );
 
     urlMutation.mutate(
-      { url: normalized },
+      { url: normalized, idempotencyKey: urlKeyRef.current },
       {
         onSuccess: (result) => {
           // Beat state FIRST. The URL stage text and input are cleared

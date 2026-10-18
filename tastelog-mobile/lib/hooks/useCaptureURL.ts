@@ -7,8 +7,10 @@ import { DRAFTS_QUERY_KEY } from "../queryKeys";
 
 export function useCaptureURL() {
   const queryClient = useQueryClient();
-  return useMutation<DraftResponse, ApiError, { url: string }>({
-    mutationFn: ({ url }) => captureURL(url),
+  // idempotencyKey: minted by the screen when the URL is typed and kept until
+  // it changes, so re-submitting the same URL replays the same attempt.
+  return useMutation<DraftResponse, ApiError, { url: string; idempotencyKey: string }>({
+    mutationFn: ({ url, idempotencyKey }) => captureURL(url, idempotencyKey),
     // 15.2 Gate A (F2): the success haptic is owned by SuccessBeat — the
     // visible acknowledgment every successful capture mounts.
     onSuccess: () => {

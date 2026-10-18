@@ -55,11 +55,17 @@ export async function revokeCaptureToken(tokenId: string) {
 
 // -------------------- Drafts --------------------
 
-export async function captureDraft(form: FormData) {
+/**
+ * `idempotencyKey` identifies one capture attempt: a retry of that attempt
+ * must send the same key so the backend returns the same draft instead of
+ * creating another. Callers mint one key per attempt (crypto.randomUUID()).
+ */
+export async function captureDraft(form: FormData, idempotencyKey: string) {
   const draft = await apiFetch({
     path: "/api/drafts/capture",
     method: "POST",
     body: form,
+    headers: { "Idempotency-Key": idempotencyKey },
     schema: draftResponseSchema,
     auth: "required",
   });
