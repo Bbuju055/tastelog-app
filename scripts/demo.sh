@@ -42,12 +42,15 @@ eval "$(supabase status -o env)"
 echo "== schema =="
 # apply.sh ledgers each migration as it lands, so the last one in the ledger
 # means the whole chain is in. A database that has tables but not that entry
-# is an interrupted bootstrap: refuse rather than seed on top of it.
+# is either an interrupted bootstrap or a demo database from before a newer
+# migration; apply.sh only installs fresh databases, so refuse rather than
+# seed on top of it.
 LAST_MIGRATION="$(basename "$(ls migrations/*.sql | tail -1)" .sql)"
 if psql "$DB_URL" -Atc "SELECT 1 FROM supabase_migrations.schema_migrations WHERE version='2000000000_$LAST_MIGRATION'" 2>/dev/null | grep -q 1; then
   echo "   already applied, skipping"
 elif psql "$DB_URL" -Atc "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='recipes'" | grep -q 1; then
-  echo "partial install: public.recipes exists but $LAST_MIGRATION is not in the migration ledger (an earlier bootstrap was interrupted)." >&2
+  echo "schema out of date: public.recipes exists but $LAST_MIGRATION is not in the migration ledger" >&2
+  echo "(an earlier bootstrap was interrupted, or this demo database predates that migration)." >&2
   echo "recover with: supabase db reset && make demo   (resets the LOCAL demo database only)" >&2
   exit 1
 else
@@ -55,6 +58,13 @@ else
 fi
 
 echo "== demo user $DEMO_EMAIL =="
+# Right after `supabase db reset` the Auth service restarts; give it up to
+# 30 s to answer its health check before using the admin API.
+for i in $(seq 1 30); do
+  if [ "$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/auth/v1/health" -H "apikey: $ANON_KEY")" = "200" ]; then break; fi
+  if [ "$i" = 30 ]; then echo "   auth service did not become ready" >&2; exit 1; fi
+  sleep 1
+done
 status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/auth/v1/admin/users" \
   -H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" \
