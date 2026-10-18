@@ -1,0 +1,20 @@
+{
+  "id": "garlic_aioli",
+  "kind": "pdf",
+  "input": "garlic_aioli.pdf",
+  "source": "Chef Jean-Pierre, https://chefjeanpierre.com/recipes/garlic-aioli/, printed 2022-01-08. 1 page, three ingredients, one numbered step followed by an unnumbered storage sentence.",
+  "pages": 1,
+  "title": "Garlic Aioli",
+  "servings": null,
+  "prep_time": null,
+  "cook_time": null,
+  "ingredients": [
+    {"page": 1, "match": ["garlic"], "quantity": "4", "unit": ["clove"], "source": "4 cloves Garlic - peeled"},
+    {"page": 1, "match": ["hot sauce"], "quantity": "5", "unit": ["dash"], "source": "5 dashes Hot Sauce"},
+    {"page": 1, "match": ["mayo"], "quantity": "1", "unit": ["cup"], "source": "1 cup Mayonnaise"}
+  ],
+  "steps": [
+    {"page": 1, "text": "Put garlic cloves through a garlic press or mince very fine, then whisk into mayonnaise along with hot sauce."},
+    {"page": 1, "optional": true, "text": "If desired, adjust the seasoning. Cover with plastic wrap and refrigerate it will keep up to 6 days."}
+  ]
+}

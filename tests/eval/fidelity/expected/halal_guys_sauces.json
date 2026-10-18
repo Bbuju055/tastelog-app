@@ -1,0 +1,38 @@
+{
+  "id": "halal_guys_sauces",
+  "kind": "pdf",
+  "input": "halal_guys_sauces.pdf",
+  "source": "Ethan Chlebowski, printed 2023-11-20 from a page whose title rendered as about:blank. 2 pages: both ingredient groups on page 1, every instruction on page 2. Two sub-recipes in one file, gram weights, 'cranks' and 'sprinkle' as units.",
+  "pages": 2,
+  "title": "White Sauce & Red Sauce for Chicken and Rice",
+  "servings": null,
+  "prep_time": "5 min",
+  "cook_time": "10 min",
+  "ingredients": [
+    {"page": 1, "match": ["mayo"], "quantity": "100", "unit": ["g"], "source": "100 g mayo"},
+    {"page": 1, "match": ["yogurt"], "quantity": "50", "unit": ["g"], "source": "50 g plain Greek yogurt"},
+    {"page": 1, "match": ["vinegar"], "quantity": "10", "unit": ["g"], "source": "10 g white vinegar"},
+    {"page": 1, "match": ["lemon"], "quantity": "0.25", "unit": ["lemon", null], "source": "Juice from 1/4 lemon"},
+    {"page": 1, "match": ["black", "pepper"], "quantity": "10", "unit": ["crank"], "source": "10 cranks black pepper"},
+    {"page": 1, "match": ["oregano"], "accept": [[null, "sprinkle"], ["1", "sprinkle"], [null, null]], "source": "Sprinkle of oregano"},
+    {"page": 1, "match": ["paprika"], "accept": [[null, "sprinkle"], ["1", "sprinkle"], [null, null]], "source": "Sprinkle of smoked paprika"},
+    {"page": 1, "match": ["salt"], "quantity": null, "unit": [null], "source": "Salt to taste"},
+    {"page": 1, "match": ["cayenne"], "quantity": "15", "unit": ["g"], "source": "15 g ground cayenne pepper"},
+    {"page": 1, "match": ["flake"], "quantity": "5", "unit": ["g"], "source": "5 g red pepper flake"},
+    {"page": 1, "match": ["salt"], "quantity": "3", "unit": ["g"], "source": "3 g salt"},
+    {"page": 1, "match": ["sugar"], "quantity": "10", "unit": ["g"], "source": "10 g Sugar"},
+    {"page": 1, "match": ["vinegar"], "quantity": "50", "unit": ["g"], "source": "50 g white vinegar"},
+    {"page": 1, "match": ["lemon"], "quantity": "1", "unit": ["lemon", null], "source": "Juice from 1 lemon"},
+    {"page": 1, "match": ["water"], "quantity": "100", "unit": ["g"], "source": "100 g water"}
+  ],
+  "steps": [
+    {"page": 2, "optional": true, "text": "White Sauce"},
+    {"page": 2, "text": "Place bowl over a scale, add mayo, yogurt, vinegar, lemon juice, black pepper, oregano, smoked paprika and salt into a bowl. Mix together."},
+    {"page": 2, "text": "Taste it! Adjust salt or any spice / herb additions as you see fit."},
+    {"page": 2, "optional": true, "text": "Red Sauce"},
+    {"page": 2, "text": "Add all ingredients to a blender. Process until smooth."},
+    {"page": 2, "text": "Add sauce to a pot and simmer over medium-low heat to develop flavors and reduce the sauce."},
+    {"page": 2, "text": "Taste and adjust for salt and vinegar - NOTE: This will be hot."},
+    {"page": 2, "text": "Let cool before storing in a bottle in the fridge."}
+  ]
+}

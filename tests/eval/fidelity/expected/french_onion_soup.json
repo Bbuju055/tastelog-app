@@ -1,0 +1,36 @@
+{
+  "id": "french_onion_soup",
+  "kind": "pdf",
+  "input": "french_onion_soup.pdf",
+  "source": "Chef Jean-Pierre, https://chefjeanpierre.com/recipes/classic-french-onion-soup-recipe/, printed 2026-01-24. 2 pages: 14 of 15 ingredients on page 1 and no instructions; the Parmesan line and all steps on page 2. The source numbers two group headers as steps 1 and 3.",
+  "pages": 2,
+  "title": "How to Make Classic French Onion Soup",
+  "servings": "6",
+  "prep_time": null,
+  "cook_time": null,
+  "ingredients": [
+    {"page": 1, "match": ["butter"], "quantity": "0.5", "unit": ["tbsp"], "source": "0.5 tablespoon Sweet Butter"},
+    {"page": 1, "match": ["olive oil"], "quantity": "0.5", "unit": ["tbsp"], "source": "0.5 tablespoon Extra Virgin Olive Oil"},
+    {"page": 1, "match": ["onion"], "quantity": "4", "unit": ["large", null], "source": "4 large Onions cut 1/4\"inch thick"},
+    {"page": 1, "match": ["shallot"], "quantity": "0.5", "unit": ["cup"], "source": "0.5 cup approx. chopped Shallots"},
+    {"page": 1, "match": ["butter"], "quantity": "1.5", "unit": ["oz"], "source": "1.5 ounces Sweet Butter, not salted"},
+    {"page": 1, "match": ["flour"], "quantity": "1", "unit": ["oz"], "source": "1 ounces Flour"},
+    {"page": 1, "match": ["leek"], "quantity": "1", "unit": ["large", null], "source": "1 large Leeks cut 1/4\"inch thick, white part and light green only"},
+    {"page": 1, "match": ["sherry"], "quantity": "0.13", "unit": ["cup"], "source": "0.13 cup Sherry Wine"},
+    {"page": 1, "match": ["port"], "quantity": "0.13", "unit": ["cup"], "source": "0.13 cup Port Wine"},
+    {"page": 1, "match": ["beef", "stock"], "quantity": "1.5", "unit": ["cup"], "source": "1.5 cups Beef Stock"},
+    {"page": 1, "match": ["stock"], "quantity": "3", "unit": ["cup"], "source": "3 cups Vegetable or Chicken Stock"},
+    {"page": 1, "match": ["salt"], "also": [["pepper"]], "quantity": null, "unit": [null], "source": "Salt and Pepper to taste"},
+    {"page": 1, "match": ["bread"], "quantity": "0.5", "unit": ["loaf", null], "source": "0.5 French Bread"},
+    {"page": 1, "match": ["swiss"], "quantity": "0.25", "unit": ["cup"], "source": "0.25 cup grated Swiss Cheese"},
+    {"page": 2, "match": ["parmesan"], "quantity": "0.25", "unit": ["cup"], "source": "0.25 cup grated Parmesan Reggiano"}
+  ],
+  "steps": [
+    {"page": 2, "optional": true, "text": "Sauté the Onions to Caramelize:"},
+    {"page": 2, "text": "In a large fry pan heat oil and butter when hot add the onions and cook at high heat to caramelize, until golden brown. Add the shallots and cook until light golden brown as well. This could take 15 to 20 minutes and reserve on the side."},
+    {"page": 2, "optional": true, "text": "In the Soup Pot:"},
+    {"page": 2, "text": "Add the butter and when melted add the flour and make a soft roux. Add the caramelized onion and shallots and add the leeks and top with the stocks. Add salt and pepper and cook slowly for 60 to 45 minutes until onion are soft!"},
+    {"page": 2, "text": "In the meantime, cut 9 to 12 slices 1/2\"inch thick of the French bread and toasted them in the oven until light golden brown. Cover with cheese and bake another 5 minutes until cheese is brown."},
+    {"page": 2, "text": "Pour the soup in individual bowls and place 2 or 3 slices of the toasted bread on top."}
+  ]
+}

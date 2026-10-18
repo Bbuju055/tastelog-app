@@ -1,0 +1,30 @@
+{
+  "id": "croque_monsieur",
+  "kind": "pdf",
+  "input": "croque_monsieur.pdf",
+  "source": "Chef Billy Parisi, https://www.billyparisi.com/croque-monsieur-recipe/, printed 2025-03-08. 2 pages, but every ingredient and every step is on page 1; page 2 holds reheating notes and nutrition. Control case for the page-1 render.",
+  "pages": 2,
+  "title": "Croque Monsieur Recipe",
+  "servings": "2",
+  "prep_time": "20 minutes",
+  "cook_time": "10 minutes",
+  "ingredients": [
+    {"page": 1, "match": ["butter"], "quantity": "2", "unit": ["tbsp"], "source": "2 tablespoons unsalted butter"},
+    {"page": 1, "match": ["bread"], "quantity": "4", "unit": ["slice"], "source": "4 slices of artisan bread"},
+    {"page": 1, "match": ["mustard"], "quantity": "2", "unit": ["tbsp"], "source": "2 tablespoons Dijon mustard"},
+    {"page": 1, "match": ["ham"], "quantity": "8-12", "unit": ["slice"], "source": "8-12 slices of country ham"},
+    {"page": 1, "match": ["bechamel"], "quantity": "0.5", "unit": ["recipe", null], "source": "0.5 bechamel recipe"},
+    {"page": 1, "match": ["cheese"], "quantity": "1", "unit": ["cup"], "source": "1 cups shredded comté cheese"}
+  ],
+  "steps": [
+    {"page": 1, "text": "Preheat the broiler to high heat."},
+    {"page": 1, "text": "Add 2 tablespoons of the butter to a very large pan over medium-low heat until melted."},
+    {"page": 1, "text": "Add 4 slices of bread to the pan and cook for 1 to 2 minutes or until toasted and lightly browned."},
+    {"page": 1, "text": "Flip the bread over to cook on the other side."},
+    {"page": 1, "text": "On two of the pieces of toasted bread add 1 tablespoon of mustard to each spreading it around to cover."},
+    {"page": 1, "text": "Add 4-6 slices of ham to the top of the toast with mustard and then evenly spread/layer on as follows: 2 to 3 tablespoons of bechamel, ¼ cup shredded cheese, a slice of toasted bread, 3-4 tablespoons of bechamel and ¼ cup of shredded cheese."},
+    {"page": 1, "text": "Place under the broiler on high heat for 3 to 4 minutes or until the cheese is melted and browned."},
+    {"page": 1, "text": "Slice the sandwich and garnish optionally with chopped fresh parsley."},
+    {"page": 1, "text": "Repeat the process to make the other sandwiches."}
+  ]
+}

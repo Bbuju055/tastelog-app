@@ -1,0 +1,24 @@
+{
+  "id": "caramelized_onions",
+  "kind": "pdf",
+  "input": "caramelized_onions.pdf",
+  "source": "Chef Jean-Pierre, https://chefjeanpierre.com/recipes/caramelized-onions/, printed 2022-01-08. 1 page. Uses the Unicode fraction character for both half cups.",
+  "pages": 1,
+  "title": "Caramelized Onions",
+  "servings": null,
+  "prep_time": null,
+  "cook_time": null,
+  "ingredients": [
+    {"page": 1, "match": ["onion"], "quantity": "4", "unit": ["very large", "large", null], "source": "4 very large Onions"},
+    {"page": 1, "match": ["butter"], "quantity": "2", "unit": ["tbsp"], "source": "2 tablespoons Sweet Butter"},
+    {"page": 1, "match": ["olive oil"], "quantity": "1", "unit": ["tbsp"], "source": "1 tablespoon Butter Infused Olive Oil if you have some otherwise Extra Virgin Olive Oil if fine"},
+    {"page": 1, "match": ["sugar"], "quantity": "0.5", "unit": ["cup"], "source": "½ cup Light Brown or Regular Sugar"},
+    {"page": 1, "match": ["balsamic"], "quantity": "0.5", "unit": ["cup"], "source": "½ cup Balsamic Vinegar"},
+    {"page": 1, "match": ["salt"], "also": [["pepper"]], "quantity": null, "unit": [null], "source": "Salt and Pepper to taste"}
+  ],
+  "steps": [
+    {"page": 1, "text": "In a Dutch oven at very low heat, cook the onions covered (no oil, no water nothing) just the onions for about 60 to 90 minutes. When cooked drain and set aside."},
+    {"page": 1, "text": "After the onions have drained all the water, in a sauté pan, heat the olive oil and butter at a medium heat, add the \"drained\" onion and cook until light golden brown."},
+    {"page": 1, "text": "Add the sugar and the vinegar. Cook for at least 10 minutes at very low heat. Season with salt and pepper. The onions are supposed to be NOT sweet NOT sour. Perfect balanced!"}
+  ]
+}

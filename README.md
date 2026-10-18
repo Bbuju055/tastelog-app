@@ -100,6 +100,7 @@ All four run in [CI](.github/workflows/ci.yml) on every push. Lint and strict Ty
 - `tastelog-web/src/lib/ingredients/` the exact-fraction scaling engine and its parser for inputs like "1 1/2 cups".
 - `tastelog-mobile/ios/TastelogShareExtension/` the Swift share extension, and `scripts/CaptureFailureMapperContract.swift`, a contract test for its error mapping.
 - `tests/test_search_secret_hygiene.py` and `loadtests/k6/lib/target-guard.js` guards that keep secrets out of logs and load tests off production.
+- [docs/SCORECARD.md](docs/SCORECARD.md) what capture actually keeps and invents on nine real inputs, with cost and latency per capture, a prompt-ablation baseline, and three failures shown with their raw model output. Small N, descriptive, reproducible from `tests/eval/fidelity/`.
 
 ## Repository layout
 
@@ -111,7 +112,7 @@ tastelog-web/     Next.js app
 tastelog-mobile/  Expo app + native iOS share extension
 loadtests/        k6 + Python load-test harness
 scripts/          Migration drift check, API test runner, Swift contract harness
-docs/             Architecture, deploy topology, migrations, iOS Shortcuts guide
+docs/             Architecture, deploy topology, migrations, iOS Shortcuts guide, capture scorecard
 capture.py …      Original Phase 0 CLI tools, thin wrappers over api/core
 ```
 

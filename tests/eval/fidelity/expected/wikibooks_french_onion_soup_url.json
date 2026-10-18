@@ -1,0 +1,35 @@
+{
+  "id": "wikibooks_french_onion_soup_url",
+  "kind": "url",
+  "input": "https://en.wikibooks.org/w/index.php?title=Cookbook:French_Onion_Soup&oldid=4518404",
+  "source": "Wikibooks Cookbook, permanent link to revision 4518404 (CC BY-SA 4.0). No JSON-LD, so capture takes the text-fallback path. The recipe sits between a history section and a notes section; several ingredient and step words are wiki links that the text extractor puts on their own lines. inputs/wikibooks_french_onion_soup_oldid4518404.txt is the exact text the production extractor produced on 2026-10-18.",
+  "pages": null,
+  "title": "French Onion Soup",
+  "servings": "3-6",
+  "prep_time": "10 minutes",
+  "cook_time": "35 minutes",
+  "ingredients": [
+    {"page": 1, "match": ["onion"], "quantity": "3", "unit": ["cup"], "source": "3 rounded cups (500 g) chopped onion"},
+    {"page": 1, "match": ["butter"], "accept": [[null, "knob"], ["1", "knob"], ["2", "tbsp"], ["25", "g"]], "note": "Approximation policy: the source gives two measures for the knob, 'a little less than 2 tbsp' and 25 g; either measure is accepted and the qualifier may be dropped or kept as prep.", "source": "A knob of butter (a little less than 2 tbsp or 25g)"},
+    {"page": 1, "match": ["flour"], "quantity": "1", "unit": ["tbsp"], "source": "1 tbsp (15g) flour"},
+    {"page": 1, "match": ["stock"], "quantity": "1.5", "unit": ["liter"], "source": "1.5 liters (roughly 5¼ cups) beef stock (chicken or vegetable stock is an acceptable alternative)"},
+    {"page": 1, "match": ["bouquet"], "quantity": "1", "unit": [null], "source": "1 bouquet garni (fresh bay, thyme, and Herbes de Provence, tied in a bundle or in a temporary sack made of cheesecloth)"},
+    {"page": 1, "match": ["bread"], "quantity": "1", "unit": ["slice"], "source": "1 slice of stale french bread, per person (or fresh bread, toasted beforehand)"},
+    {"page": 1, "match": ["port"], "quantity": "3", "unit": ["tbsp"], "source": "3 tbsp red (50 ml) port wine"},
+    {"page": 1, "match": ["gruy"], "quantity": "1", "unit": ["cup"], "source": "1 cup grated (125g) Gruyère cheese"},
+    {"page": 1, "match": ["nutmeg"], "quantity": null, "unit": [null], "source": "Nutmeg"},
+    {"page": 1, "match": ["salt"], "quantity": null, "unit": [null], "source": "Salt"},
+    {"page": 1, "match": ["pepper"], "quantity": null, "unit": [null], "source": "Pepper"}
+  ],
+  "steps": [
+    {"page": 1, "text": "Melt the butter in a large saucepan. Stir in the onions, and let the onions blonde on moderate heat (which is to say, let them cook until they are light gold and transparent, but do not let them over-caramelize and become dark)."},
+    {"page": 1, "text": "Add the flour to the onions. Stir gently for 3–4 minutes. The flour will seem to have disappeared, but has been absorbed into the butter. This will give the soup its characteristic slight thickness. Scrape up any of the dark brown butter and flour mixture that has stuck to the bottom of the saucepan; it is called fond, and will add flavour to the soup."},
+    {"page": 1, "text": "Pour ⅔ of the beef broth over the onions and mix well. Add the bouquet garni. Bring to a boil, stirring regularly."},
+    {"page": 1, "text": "Season with salt and pepper and a little nutmeg, to taste. Add the rest of the broth, and let the soup simmer gently for 10–15 minutes."},
+    {"page": 1, "text": "If your bread is fresh, then toast it now over low heat."},
+    {"page": 1, "text": "Remove the soup from the heat, and remove the bouquet garni. Add port and stir well."},
+    {"page": 1, "text": "Divide the soup into 6 oven-safe ceramic or glass bowls. Press a slice of bread into the top of each bowl of soup. Generously sprinkle grated Gruyère cheese on top."},
+    {"page": 1, "text": "Broil on low for 10 minutes, or until the cheese is melted and browned."},
+    {"page": 1, "text": "Serve piping hot."}
+  ]
+}

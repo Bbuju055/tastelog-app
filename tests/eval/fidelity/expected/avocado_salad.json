@@ -1,0 +1,31 @@
+{
+  "id": "avocado_salad",
+  "kind": "pdf",
+  "input": "avocado_salad.pdf",
+  "source": "Cooking Classy, https://www.cookingclassy.com/avocado-salad/, printed 2023-03-28 with the site's scaler set to 2 servings. 1 page.",
+  "pages": 1,
+  "title": "Avocado Salad",
+  "servings": "2",
+  "prep_time": "15 minutes",
+  "cook_time": null,
+  "ingredients": [
+    {"page": 1, "match": ["cucumber"], "quantity": "0.33", "unit": ["medium", null], "source": "0.33 medium (12 oz) English cucumber, cut into quarters through the length then sliced"},
+    {"page": 1, "match": ["tomato"], "quantity": "5.33", "unit": ["oz"], "source": "5.33 oz. grape tomatoes*"},
+    {"page": 1, "match": ["red", "onion"], "quantity": "0.17", "unit": ["small", null], "source": "0.17 small red onion,** sliced into small pieces"},
+    {"page": 1, "match": ["avocado"], "quantity": "0.67", "unit": ["medium", null], "source": "0.67 medium avocados (firm but ripe), sliced into bite size pieces"},
+    {"page": 1, "match": ["lemon"], "quantity": "0.5", "unit": ["tbsp"], "source": "0.5 Tbsp fresh lemon juice***"},
+    {"page": 1, "match": ["vinegar"], "quantity": "0.5", "unit": ["tbsp"], "source": "0.5 Tbsp red wine vinegar"},
+    {"page": 1, "match": ["olive oil"], "quantity": "1.17", "unit": ["tbsp"], "source": "1.17 Tbsp extra virgin olive oil"},
+    {"page": 1, "match": ["honey"], "quantity": "0.33", "unit": ["tsp"], "source": "0.33 tsp honey"},
+    {"page": 1, "match": ["garlic"], "quantity": "0.5", "unit": ["tsp"], "source": "0.5 tsp minced garlic"},
+    {"page": 1, "match": ["cilantro"], "quantity": "0.08", "unit": ["cup"], "source": "0.08 cup chopped cilantro"},
+    {"page": 1, "match": ["parsley"], "quantity": "0.08", "unit": ["cup"], "source": "0.08 cup chopped parsley"},
+    {"page": 1, "match": ["oregano"], "quantity": "0.17", "unit": ["tsp"], "source": "0.17 tsp dried oregano"},
+    {"page": 1, "match": ["salt"], "also": [["pepper"]], "quantity": null, "unit": [null], "source": "Salt and freshly ground black pepper"}
+  ],
+  "steps": [
+    {"page": 1, "text": "For the dressing: In a small mixing bowl whisk together lemon juice, red wine vinegar, extra virgin oil oil, honey, garlic, cilantro, parsley, oregano, and season with salt and pepper to taste."},
+    {"page": 1, "text": "In a large bowl gently toss together cucumbers, tomatoes, red onion, and avocado with dressing."},
+    {"page": 1, "text": "Serve shortly after preparing."}
+  ]
+}

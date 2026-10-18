@@ -1,19 +1,24 @@
 # tests/eval — model-path evals (manual, not pytest)
 
-Two hand-run harnesses that call the real model through the production
-code paths and write a JSONL transcript per run. Neither is collected by
-pytest; both need `ANTHROPIC_API_KEY` and spend money. Their results are
+Three hand-run harnesses that call the real model through the production
+code paths and write a JSONL transcript per run. None is collected by
+pytest; all need `ANTHROPIC_API_KEY` and spend money. Their results are
 reported separately and must not be added together: the mapping gate
 scores step-to-ingredient associations, the riff baseline scores the
-chat prompt's output shape.
+chat prompt's output shape, the fidelity eval scores what a capture keeps
+and invents from a real input.
 
 | Harness | What it scores | Calls per run | Cases |
 |---|---|---|---|
 | `run_mapping_eval.py` | the four production paths that attach ingredients to steps | 24 | 3 recipes × 4 paths × 2 runs |
 | `run_riff_baseline.py` | `RIFF_SYSTEM_PROMPT_TEMPLATE` in `api/core/riff.py` | 14 | 14 single-turn cases over 3 recipes |
+| `fidelity/run_capture_fidelity.py` | omissions and hallucinations of the full capture pipeline on real inputs, plus latency, tokens and cost | ~40 | 9 inputs × 2 arms × 2 runs |
 
 The model is `DEFAULT_CLAUDE_MODEL` in `api/core/anthropic_client.py`.
-Transcripts land in `runs/` (gitignored: they hold raw model output).
+Mapping and riff transcripts land in `runs/` (gitignored: they hold raw
+model output). Fidelity results are committed under `fidelity/results/`
+so they can be re-scored offline; the headline numbers live in
+`docs/SCORECARD.md`.
 
 ---
 
@@ -27,6 +32,10 @@ Transcripts land in `runs/` (gitignored: they hold raw model output).
 | `riff_eval_recipes.py` | Three source recipes in the `get_recipe` shape plus the 14-case registry (`EVAL_CASES`, `RECIPES_BY_ID`). |
 | `run_riff_baseline.py` | Riff prompt baseline. Runs every case once through the production `run_riff_turn` and records mechanical signals. |
 | `runs/` | JSONL transcripts, created on first run. |
+| `fidelity/inputs/` | Seven real recipe PDFs (printed web pages, 1 to 2 pages each) and the text snapshot of the Wikibooks page, as the production extractor produced it. |
+| `fidelity/expected/*.json` | One hand-written answer per case: every ingredient and step of the whole source recipe, tagged with the page it sits on. |
+| `fidelity/run_capture_fidelity.py` | Capture-fidelity eval. Runs the two capture routes' code paths over the inputs in two arms and scores against `expected/`. |
+| `fidelity/results/` | Committed JSONL results, one row per (arm, run, case), raw model text included. |
 
 ---
 
@@ -168,11 +177,82 @@ options", "It depends", "I'd suggest considering", "Feel free to".
 
 ---
 
+## Capture fidelity
+
+```bash
+make eval-fidelity PYTHON=api/.venv/bin/python                       # 2 arms × 2 runs × 9 cases
+make eval-fidelity PYTHON=api/.venv/bin/python ARGS="--arm production --runs 1 --case garlic_aioli"
+api/.venv/bin/python tests/eval/fidelity/run_capture_fidelity.py --rescore tests/eval/fidelity/results/fidelity_<stamp>.jsonl [--out <file>]
+```
+
+The make target exports `.env` into the process so the SDK finds the key;
+the harness itself only checks that the variable is present. `--rescore`
+re-applies the scoring rules to each row's stored `parsed` dict (the
+validated recipe the route would have stored; the raw model text is kept
+alongside but not re-parsed) and makes no API call; with `--out` it writes
+the re-scored rows back (only the `score` field changes), which is how an
+expected answer or a scoring rule can be corrected after a run without
+spending again.
+
+Nine cases, all real inputs: seven PDFs under `fidelity/inputs/` (printed
+recipe pages from five sites, three of them two pages long with content on
+the second page) and two live URLs, one with JSON-LD
+(`cookingclassy.com/avocado-salad`, which is also the source of one of the
+PDFs, scaled to 2 servings there and 6 on the page) and one without (a
+Wikibooks Cookbook revision, pinned by `oldid`). Each case runs exactly
+what the capture routes run: `parse_recipe_images` then
+`canonicalize_parsed_recipe` for a PDF, `extract_recipe_from_url` for a
+URL. The pipeline renders page 1 of a PDF only, so page-2 ingredients and
+steps are expected to go missing; they are scored as omissions and
+labelled by page so the pipeline's limit and the model's misses stay
+separate.
+
+Two arms, same model, same validators:
+
+| Arm | Prompts |
+|---|---|
+| `production` | the shipped prompts, untouched |
+| `baseline` | each parse prompt cut at its `Rules:` line, leaving the schema example alone; the URL text prompt also loses its "ignore the blog noise" paragraph. The step mapper runs unchanged. |
+
+Scoring per case, from the validated recipe dict the route would store:
+
+- **Ingredients.** Expected ingredients match produced ones one-to-one by
+  keyword: every word in the expected `match` list must appear in the
+  produced structured `name` (raw text is not consulted, so a right raw
+  line cannot hide a wrong name); among several candidates the one whose
+  quantity agrees wins. A combined source line ("Salt and pepper") lists
+  its other components under `also`; each must appear in the matched row
+  or in one further produced row, else it is an omission. Unmatched
+  expected = omission, by page. Unmatched produced = hallucination.
+  Quantity and unit are accepted only as pairs: one scalar `quantity` with
+  each listed `unit`, or an explicit `accept` list of pairs for lines with
+  several legitimate readings. Comparison normalises fractions, Unicode
+  fractions, ranges, unit aliases and plurals.
+- **Steps.** Greedy best-similarity matching (sequence ratio ≥ 0.6, or
+  word recall ≥ 0.75 for steps of six words or more); a produced step that
+  merges two source steps is credited to both. Matched steps are checked
+  for numbers present in the source but missing from the output. A match
+  means the text overlaps, not that every word is right. Expected steps
+  flagged `optional` (group headers the source numbered, a trailing
+  storage sentence) count neither way; their presence is reported.
+- **Title** by substring or sequence similarity. **Servings, prep and cook
+  time** as values or ranges; times are reduced to minutes.
+- **Mapping** (`ingredient_positions`) is recorded as known / empty /
+  unknown counts and not scored: `run_mapping_eval.py` owns that gate.
+
+Each result row holds the arm, run, case, input hash (or fetched-HTML hash
+and JSON-LD presence for a URL), the prompt hashes, `PARSER_VERSION`, the
+model id, every call's token usage, stop reason, latency and raw text, the
+wall time, the priced cost (`PRICE_USD_PER_MTOK` in the script, with its
+source) and the score above.
+
+---
+
 ## Scope
 
-Both harnesses are regression suites for the model paths they exercise.
-Rerun the relevant one before changing `RIFF_SYSTEM_PROMPT_TEMPLATE`,
-the `recipe-json` fence handling, the `ParsedRecipe` schema, the mapping
-prompt or the four-state mapping validators, and compare against the
-previous transcript. They introduce no dependencies and touch no
-production file.
+All three harnesses are regression suites for the model paths they
+exercise. Rerun the relevant one before changing `RIFF_SYSTEM_PROMPT_TEMPLATE`,
+the `recipe-json` fence handling, the `ParsedRecipe` schema, the parse
+prompts, the mapping prompt or the four-state mapping validators, and
+compare against the previous transcript or results file. They introduce
+no dependencies and touch no production file.

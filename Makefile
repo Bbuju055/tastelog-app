@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: deps deps-dev sync sync-dev test api-test dev demo demo-api clean
+.PHONY: deps deps-dev sync sync-dev test api-test dev demo demo-api eval-fidelity clean
 
 # Compile locked requirements from .in files
 deps:
@@ -32,6 +32,13 @@ demo:
 # switch and the schema readiness guard read os.environ, not the dotenv file.
 demo-api:
 	set -a && . ./.env && set +a && $(PYTHON) -m uvicorn api.main:app --reload
+
+# Capture-fidelity eval with .env exported: the Anthropic SDK reads
+# ANTHROPIC_API_KEY from the process environment, the harness never does.
+# Spends money (about 40 calls per full run). ARGS passes harness flags, e.g.
+#   make eval-fidelity PYTHON=api/.venv/bin/python ARGS="--arm production --runs 1 --case garlic_aioli"
+eval-fidelity:
+	set -a && . ./.env && set +a && $(PYTHON) tests/eval/fidelity/run_capture_fidelity.py $(ARGS)
 
 # Run API tests from scratch (creates venv if needed, syncs deps, runs pytest)
 api-test:
