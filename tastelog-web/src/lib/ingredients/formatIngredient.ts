@@ -111,10 +111,14 @@ export function formatIngredient(
       };
     }
 
-    // unparsed
+    // unparsed — raw_text already contains the full ingredient line including
+    // any prep notes, so suppress prep to avoid duplication in display
+    // (mirrors tastelog-mobile/lib/ingredients/formatIngredient.ts).
+    const mainText = formatOriginalText(ingredient);
+    const usedRawText = ingredient.raw_text != null;
     return {
-      main: formatOriginalText(ingredient),
-      prep,
+      main: mainText,
+      prep: usedRawText ? null : prep,
       annotation: null,
       showNotScaled: !factorIsOne,
     };

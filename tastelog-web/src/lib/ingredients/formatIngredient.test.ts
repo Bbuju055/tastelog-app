@@ -239,5 +239,41 @@ describe("formatIngredient", () => {
 
       expect(formatted.main).toBe("some flour");
     });
+
+    it("does not repeat prep when raw_text already carries it", () => {
+      const result: ScaleResult = {
+        kind: "unscaled",
+        reason: "unparsed",
+      };
+      const ingredient = makeIngredient({
+        quantity: "0.33",
+        unit: null,
+        name: "English cucumber",
+        prep: "cut into quarters then sliced",
+        raw_text: "0.33 medium English cucumber, cut into quarters then sliced",
+      });
+      const formatted = formatIngredient(result, ingredient, ONE);
+
+      expect(formatted.main).toBe(
+        "0.33 medium English cucumber, cut into quarters then sliced"
+      );
+      expect(formatted.prep).toBeNull();
+    });
+
+    it("keeps prep when there is no raw_text to carry it", () => {
+      const result: ScaleResult = {
+        kind: "unscaled",
+        reason: "unparsed",
+      };
+      const ingredient = makeIngredient({
+        quantity: null,
+        name: "flour",
+        prep: "sifted",
+        raw_text: null,
+      });
+      const formatted = formatIngredient(result, ingredient, ONE);
+
+      expect(formatted.prep).toBe("sifted");
+    });
   });
 });

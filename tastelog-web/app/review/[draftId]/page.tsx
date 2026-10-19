@@ -1,11 +1,14 @@
 // app/review/[draftId]/page.tsx
 import DraftReviewForm from "@/components/DraftReviewForm";
 
-export default function ReviewDraftPage({
+export default async function ReviewDraftPage({
   params,
 }: {
-  params: { draftId: string };
+  params: Promise<{ draftId: string }>;
 }) {
-  // Route params are trusted strings from Next router; DraftReviewForm handles validation/errors.
-  return <DraftReviewForm draftId={params.draftId} />;
+  // Next 16 delivers route params as a Promise; reading a property without
+  // awaiting yields undefined and the form asks the API for /drafts/undefined.
+  // DraftReviewForm handles validation/errors for the resolved string.
+  const { draftId } = await params;
+  return <DraftReviewForm draftId={draftId} />;
 }

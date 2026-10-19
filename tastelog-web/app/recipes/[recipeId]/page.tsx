@@ -1,10 +1,12 @@
 // app/recipes/[recipeId]/page.tsx
 import RecipeDetailView from "@/components/RecipeDetailView";
 
-export default function RecipePage({
+export default async function RecipePage({
   params,
 }: {
-  params: { recipeId: string };
+  params: Promise<{ recipeId: string }>;
 }) {
-  return <RecipeDetailView recipeId={params.recipeId} />;
+  // Next 16 delivers route params as a Promise; see app/review/[draftId]/page.tsx.
+  const { recipeId } = await params;
+  return <RecipeDetailView recipeId={recipeId} />;
 }
