@@ -140,7 +140,7 @@ _STEP_LIST_MARKER = "Steps:\n"
 # `api.core.parser.ParsedRecipe` (title required, confidence in [0,1],
 # ingredients/steps with the canonical field names + `extra = "forbid"`).
 _DETERMINISTIC_RECIPE_JSON: dict[str, Any] = {
-    "title": "Load Test Stub Recipe",
+    "title": "Two-Ingredient Crepes",
     "servings": "4",
     "prep_time": "10 min",
     "cook_time": "20 min",
