@@ -46,11 +46,14 @@ React Native mobile app for Tastelog recipe capture.
 ## Dev Commands
 
 ```bash
-# Start dev server
-npx expo start
-
-# iOS simulator
-npx expo start --ios
+# iOS simulator (Expo Go cannot load this app: it uses native speech-recognition
+# and image-picker modules, so build a native dev build once)
+SENTRY_DISABLE_AUTO_UPLOAD=true npx expo run:ios
+# The variable skips Sentry's debug-symbol upload, which otherwise fails the
+# build on a checkout with no Sentry organization configured. Later sessions:
+# start Metro in custom-runtime mode and open the installed app on the simulator
+# (plain `expo start` targets Expo Go, which cannot run this app).
+npx expo start --dev-client
 
 # Type check
 npx tsc --noEmit

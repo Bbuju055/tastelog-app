@@ -19,6 +19,20 @@ Three clients share one FastAPI backend: a Next.js web app, an Expo / React Nati
 - **Riff**: a streaming Claude conversation anchored to a recipe ("make it vegan", "halve it for two"), with one-tap save of the adapted recipe.
 - **Capture tokens**: scoped, revocable bearer tokens so the iOS share extension and Shortcuts can capture without holding the user's session.
 
+## What it looks like
+
+<p>
+  <img src="docs/images/mobile-capture.png" alt="iOS capture screen: pick photos or paste a recipe link" width="23%">
+  <img src="docs/images/mobile-review.png" alt="iOS review screen: the parsed Avocado Salad draft with editable title, servings, times and ingredients" width="23%">
+  <img src="docs/images/mobile-recipe.png" alt="iOS recipe screen: saved Avocado Salad with cook, grocery, log and riff actions" width="23%">
+  <img src="docs/images/mobile-recipes.png" alt="iOS recipes list: the saved Avocado Salad above the three demo recipes" width="23%">
+</p>
+<p>
+  <img src="docs/images/web-review.png" alt="Web review page: the same draft, confidence 0.95, title, servings and times in fields and the first ingredient lines editable" width="70%">
+</p>
+
+Real captures of a printed recipe page through the local demo stack with a live model (the demo itself runs with a stub and needs no key). Taken on 2026-10-18 by `scripts/web-journey.mjs` for the web and from the iOS simulator for the app.
+
 ## Architecture
 
 ```
@@ -46,7 +60,7 @@ Requirements: Python 3.12, Node 20 for the web app, Node 24 for the mobile app (
 python3.12 -m venv api/.venv && source api/.venv/bin/activate
 pip install pip-tools && make sync-dev      # hash-verified install from the lockfile
 cp .env.example .env                        # placeholder keys; tests run as-is
-make test                                   # 871 tests, no network
+make test                                   # 948 tests, no network
 make dev                                    # http://localhost:8000, docs at /docs
 ```
 
@@ -67,7 +81,7 @@ supabase stop                               # when done
 ```bash
 cd tastelog-web
 npm ci && cp .env.example .env.local
-npm test                                    # 170 tests
+npm test                                    # 174 tests
 npm run dev                                 # http://localhost:3000
 ```
 
@@ -76,20 +90,20 @@ npm run dev                                 # http://localhost:3000
 ```bash
 cd tastelog-mobile
 npm ci && cp .env.example .env              # for the demo stack, use SUPABASE_ANON_KEY from ../.env.demo
-npm test                                    # 1306 tests across 82 suites
-npx expo start --ios
+npm test                                    # 1311 tests across 83 suites
+SENTRY_DISABLE_AUTO_UPLOAD=true npx expo run:ios   # native dev build; Expo Go cannot load this app (see tastelog-mobile/README.md)
 ```
 
 ## Tests
 
 | Suite | Runner | Count | Needs |
 |---|---|---|---|
-| Backend | pytest | 871 | placeholder `.env` only |
-| Web | vitest | 170 | nothing |
-| Mobile | jest | 1306 | nothing |
+| Backend | pytest | 948 | placeholder `.env` only |
+| Web | vitest | 174 | nothing |
+| Mobile | jest | 1311 | nothing |
 | Migrations | real PostgreSQL 17.6 (`tests/db/run_db_proof.sh`) | base schema + 003..028, concurrency batteries | Docker |
 
-All four run in [CI](.github/workflows/ci.yml) on every push. Lint and strict TypeScript checks run alongside the web and mobile suites, and the web job also runs `next build`. The web review-and-confirm journey is covered without a browser and without a database: `tastelog-web/src/lib/drafts/reviewPatch.test.ts` proves the form's adapter and patch builder, and the confirm tests in `tests/test_drafts.py` prove the route forwards those overrides to the confirm RPC (mocked). Persistence and reload through a real database are not covered by an automated test; they were checked by hand against the local demo stack.
+All four run in [CI](.github/workflows/ci.yml) on pushes to `main` and on pull requests. The web job also runs lint, strict TypeScript and `next build`; the mobile job runs strict TypeScript. The web review-and-confirm journey is covered without a browser and without a database: `tastelog-web/src/lib/drafts/reviewPatch.test.ts` proves the form's adapter and patch builder, and the confirm tests in `tests/test_drafts.py` prove the route forwards those overrides to the confirm RPC (mocked). Persistence and reload through a real database are not covered in CI; `scripts/web-journey.mjs` drives the real pages in a headless browser against the local demo stack (log in, upload, review, confirm, reload the saved recipe) and is run by hand, since Playwright is not a dependency of this repository.
 
 ## Things worth reading
 
@@ -100,6 +114,7 @@ All four run in [CI](.github/workflows/ci.yml) on every push. Lint and strict Ty
 - `tastelog-web/src/lib/ingredients/` the exact-fraction scaling engine and its parser for inputs like "1 1/2 cups".
 - `tastelog-mobile/ios/TastelogShareExtension/` the Swift share extension, and `scripts/CaptureFailureMapperContract.swift`, a contract test for its error mapping.
 - `tests/test_search_secret_hygiene.py` and `loadtests/k6/lib/target-guard.js` guards that keep secrets out of logs and load tests off production.
+- [docs/CASE_STUDY.md](docs/CASE_STUDY.md) the problem, the constraints, three decisions, the two bugs this public copy opened with and what changed, and what the scorecard says.
 - [docs/SCORECARD.md](docs/SCORECARD.md) what capture actually keeps and invents on nine real inputs, with cost and latency per capture, a prompt-ablation baseline, and three failures shown with their raw model output. Small N, descriptive, reproducible from `tests/eval/fidelity/`.
 
 ## Repository layout
@@ -112,7 +127,7 @@ tastelog-web/     Next.js app
 tastelog-mobile/  Expo app + native iOS share extension
 loadtests/        k6 + Python load-test harness
 scripts/          Migration drift check, API test runner, Swift contract harness
-docs/             Architecture, deploy topology, migrations, iOS Shortcuts guide, capture scorecard
+docs/             Architecture, deploy topology, migrations, iOS Shortcuts guide, case study, capture scorecard
 capture.py …      Original Phase 0 CLI tools, thin wrappers over api/core
 ```
 
