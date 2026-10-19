@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo } from "react-native";
+import { AccessibilityInfo, Modal } from "react-native";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderWithTheme } from "../test-utils";
@@ -128,6 +128,16 @@ async function settle() {
   });
 }
 
+// The beat runs with waitForDismiss: the replace fires only from the native
+// Modal onDismiss. Drive it explicitly (see __tests__/app/recipe/cook.test.tsx).
+function driveBeatDismiss() {
+  act(() => {
+    screen
+      .UNSAFE_getByType(Modal as unknown as React.ComponentType)
+      .props.onDismiss();
+  });
+}
+
 /** The held presentation is intact and no loading/error surface leaked. */
 function expectHeldFrame() {
   expect(screen.getByText("Review Draft", HIDDEN)).toBeTruthy();
@@ -204,6 +214,8 @@ describe("DraftReviewScreen — confirm-flow integration across the real query b
     // (9) Dwell expiry → exactly one replace to the saved recipe.
     advance(700);
     await settle();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
     expect(mockRouterReplace).toHaveBeenCalledWith({
       pathname: "/(app)/recipe/[id]",

@@ -1,5 +1,5 @@
 import React from "react";
-import { AccessibilityInfo, Animated, Linking } from "react-native";
+import { AccessibilityInfo, Animated, Linking, Modal } from "react-native";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 import { renderWithTheme } from "../test-utils";
 
@@ -339,6 +339,17 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     await act(async () => {});
   }
 
+  // The beat runs with waitForDismiss: completing hides its Modal and the
+  // replace fires only from the native onDismiss. Drive that signal the way
+  // the cook tests do, so the ordering the fix depends on is what is tested.
+  function driveBeatDismiss() {
+    act(() => {
+      screen
+        .UNSAFE_getByType(Modal as unknown as React.ComponentType)
+        .props.onDismiss();
+    });
+  }
+
   function setupLoadedDraft() {
     mockUseDraftFn.mockReturnValue({
       data: makeDraft(),
@@ -393,6 +404,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     expect(mockDeleteMutation.mutate).not.toHaveBeenCalled();
 
     advance(700);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
     expect(mockRouterReplace).toHaveBeenCalledWith({
       pathname: "/(app)/recipe/[id]",
@@ -412,6 +425,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     await settle();
 
     fireEvent.press(screen.getByLabelText("Saved to your cookbook"));
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
     advance(10_000);
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
@@ -487,6 +502,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     expect(screen.getByLabelText("Saved to your cookbook")).toBeTruthy();
 
     advance(700);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
     expect(mockRouterReplace).toHaveBeenCalledWith({
       pathname: "/(app)/recipe/[id]",
@@ -523,6 +540,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     await settle();
     expect(screen.getByLabelText("Saved to your cookbook")).toBeTruthy();
     advance(700);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
   });
 
@@ -549,6 +568,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     expect(screen.getByText("Review Draft", HIDDEN)).toBeTruthy();
     expect(screen.getByLabelText("Saved to your cookbook")).toBeTruthy();
     advance(700);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
   });
 
@@ -586,6 +607,8 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     expect(openUrlSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Saved to your cookbook")).toBeTruthy();
     advance(700);
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    driveBeatDismiss();
     expect(mockRouterReplace).toHaveBeenCalledTimes(1);
     openUrlSpy.mockRestore();
   });

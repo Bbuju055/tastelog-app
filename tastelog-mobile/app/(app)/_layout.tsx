@@ -35,11 +35,12 @@ export default function AppLayout() {
       />
       <Stack.Screen
         name="draft/[id]"
-        options={{ title: "Review Draft" }}
+        // Same reason as recipe/[id]: without it the back label is "(tabs)".
+        options={{ title: "Review Draft", headerBackTitle: "Back" }}
       />
       <Stack.Screen
         name="review/[id]"
-        options={{ title: "Capture Result" }}
+        options={{ title: "Capture Result", headerBackTitle: "Back" }}
       />
       <Stack.Screen
         name="recipe/edit/[id]"

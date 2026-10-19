@@ -563,6 +563,11 @@ export default function DraftReviewScreen() {
           accessibilityHint="Opens your saved recipe."
           variant="compact"
           startedAt={pendingBeat.startedAt}
+          // iOS: replace the route only after UIKit reports the beat's Modal
+          // dismissed, as the cook screen does. Suspected (not proven) cause
+          // of the intermittently dead back button on the recipe screen after
+          // a confirm: the route swap overlapping the Modal dismissal.
+          waitForDismiss
           onComplete={handleBeatComplete}
         />
       ) : null}
