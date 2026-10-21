@@ -53,12 +53,12 @@ export default function HomePage() {
   }, [isSearching, listQuery.data, searchQuery.data]);
 
   return (
-    <div className="space-y-4">
-      <Card>
+    <div className="space-y-8">
+      <Card className="page-surface">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <CardTitle>Recipes</CardTitle>
-            <p className="text-sm text-neutral-600">
+            <CardTitle className="page-title">Recipes</CardTitle>
+            <p className="text-sm text-muted-foreground">
               Search your saved recipes or add a new one.
             </p>
           </div>
@@ -68,7 +68,7 @@ export default function HomePage() {
           </Button>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-8">
           <form
             className="flex flex-col gap-2 sm:flex-row sm:items-center"
             onSubmit={(e) => {
@@ -79,6 +79,7 @@ export default function HomePage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              aria-label="Search recipes"
               placeholder="Search recipes…"
             />
             <div className="flex gap-2">
@@ -109,11 +110,11 @@ export default function HomePage() {
           ) : null}
 
           {loading ? (
-            <div className="text-sm text-neutral-700" aria-live="polite">
+            <div className="text-sm text-foreground" aria-live="polite">
               Loading…
             </div>
           ) : recipes.length === 0 ? (
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-6 text-center text-sm text-neutral-700">
+            <div className="rounded-lg border border-border bg-background px-3 py-6 text-center text-sm text-foreground">
               {isSearching ? "No matching recipes." : "No recipes yet."}
               <div className="mt-2">
                 <Button asChild size="sm">
@@ -122,7 +123,7 @@ export default function HomePage() {
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {recipes.map((r) => {
                 const id = r?.id;
                 const title =
@@ -134,9 +135,9 @@ export default function HomePage() {
                   <Link
                     key={String(id)}
                     href={`/recipes/${encodeURIComponent(String(id))}`}
-                    className="rounded-xl border border-neutral-200 bg-white p-4 hover:bg-neutral-50"
+                    className="recipe-tile flex min-h-36 items-start rounded-xl border border-border bg-card p-6"
                   >
-                    <div className="text-sm font-semibold">{title}</div>
+                    <div className="font-display text-3xl leading-tight">{title}</div>
                   </Link>
                 );
               })}

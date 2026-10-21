@@ -78,7 +78,7 @@ export function RecipeScaleControl({ factor, onFactorChange }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-sm text-neutral-500">Scale</span>
+        <span className="text-sm text-muted-foreground">Scale</span>
 
         <div className="flex gap-1">
           {PRESETS.map((preset) => (

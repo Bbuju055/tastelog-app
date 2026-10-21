@@ -91,7 +91,7 @@ function LoginForm() {
 
   if (checkingSession) {
     return (
-      <div className="text-sm text-neutral-700" aria-live="polite">
+      <div className="text-sm text-foreground" aria-live="polite">
         Checking session…
       </div>
     );
@@ -138,7 +138,7 @@ function LoginForm() {
         {submitting ? "Signing in…" : "Sign in"}
       </Button>
 
-      <div className="text-xs text-neutral-500">
+      <div className="text-xs text-muted-foreground">
         After sign-in, you&apos;ll be redirected to{" "}
         <code className="rounded bg-neutral-100 px-1 py-0.5">{nextPath}</code>.
       </div>
@@ -148,11 +148,11 @@ function LoginForm() {
 
 function AuthUnavailable() {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-[65vh] items-center justify-center">
+      <Card className="w-full max-w-md border-0 bg-transparent shadow-none">
         <CardHeader>
-          <CardTitle>Sign in unavailable</CardTitle>
-          <p className="text-sm text-neutral-600">
+          <CardTitle className="page-title">Sign in unavailable</CardTitle>
+          <p className="text-sm text-muted-foreground">
             Authentication is disabled because Supabase isn&apos;t configured
             for this deployment.
           </p>
@@ -173,11 +173,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-[65vh] items-center justify-center">
+      <Card className="w-full max-w-md border-0 bg-transparent shadow-none">
         <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <p className="text-sm text-neutral-600">
+          <CardTitle className="page-title">Sign in</CardTitle>
+          <p className="text-sm text-muted-foreground">
             Sign in to access Tastelog.
           </p>
         </CardHeader>
@@ -185,7 +185,7 @@ export default function LoginPage() {
         <CardContent>
           <Suspense
             fallback={
-              <div className="text-sm text-neutral-700">Loading…</div>
+              <div className="text-sm text-foreground">Loading…</div>
             }
           >
             <LoginForm />

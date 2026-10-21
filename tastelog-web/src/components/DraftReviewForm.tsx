@@ -50,7 +50,7 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onResetEdits, onConfi
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-neutral-200 p-3 text-sm" aria-live="polite">
+      <div className="rounded-lg border border-border p-3 text-sm" aria-live="polite">
         <p>Check ingredients and instructions against the source. Extraction can miss or invent content, even when it looks complete.</p>
         {missing.length > 0 ? <p role="alert">Missing {missing.join(" and ")}. Add these from the source before saving. This draft has not been saved as a recipe.</p> : null}
       </div>
@@ -136,8 +136,8 @@ export default function DraftReviewForm({ draftId }: Props) {
 
   if (draftQuery.isLoading) {
     return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-6">
-        <div className="text-sm text-neutral-700" aria-live="polite">
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <div className="text-sm text-foreground" aria-live="polite">
           Loading draft…
         </div>
       </div>
@@ -146,8 +146,8 @@ export default function DraftReviewForm({ draftId }: Props) {
 
   if (!draft) {
     return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-6">
-        <div className="text-sm text-neutral-700">Draft not available.</div>
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <div className="text-sm text-foreground">Draft not available.</div>
         {errorMsg ? (
           <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {errorMsg}

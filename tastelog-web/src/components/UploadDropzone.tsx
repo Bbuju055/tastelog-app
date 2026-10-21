@@ -75,19 +75,19 @@ export default function UploadDropzone({
   return (
     <Card
       className={[
-        "border border-neutral-200 bg-white",
+        "border-0 bg-transparent shadow-none py-0",
         disabled ? "opacity-60" : "",
       ].join(" ")}
     >
-      <CardContent className="p-4 sm:p-6">
+      <CardContent className="p-0">
         <div className="space-y-3">
           {/* Drop area */}
           <label
             className={[
-              "group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-4 py-10 text-center transition-colors",
+              "group relative flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-6 py-16 text-center transition-colors",
               isDragging
-                ? "border-neutral-800 bg-neutral-50"
-                : "border-neutral-300 bg-white hover:border-neutral-500",
+                ? "border-neutral-800 bg-background"
+                : "border-neutral-300 bg-card hover:border-neutral-500",
               disabled ? "cursor-not-allowed" : "",
             ].join(" ")}
             onDragEnter={(e) => {
@@ -121,14 +121,14 @@ export default function UploadDropzone({
             />
 
             <div className="space-y-2">
-              <div className="text-sm font-semibold">
+              <div className="font-display text-3xl">
                 Drop a recipe image or single-page PDF
               </div>
-              <div className="text-xs text-neutral-600">
+              <div className="text-xs text-muted-foreground">
                 Or click to choose a file
               </div>
 
-              <div className="pt-1 text-xs text-neutral-500">
+              <div className="pt-1 text-xs text-muted-foreground">
                 {humanAcceptList(accept)} • up to {formatBytes(maxSizeBytes)}
               </div>
             </div>
@@ -145,7 +145,7 @@ export default function UploadDropzone({
 
           {/* Optional helper actions (no behavior change) */}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs text-neutral-500">
+            <div className="text-xs text-muted-foreground">
               Tip: a clear, well-lit photo improves parsing accuracy.
             </div>
 

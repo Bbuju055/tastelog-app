@@ -51,50 +51,26 @@
 }
 
 :root {
-  --radius: 0.75rem;
-
-  /* Tastelog Tranquil palette (unchanged) */
-  --background: oklch(0.97 0.01 140);
-  --foreground: oklch(0.35 0.015 140);
-
-  --card: oklch(0.99 0.005 80);
-  --card-foreground: oklch(0.35 0.015 140);
-
-  --popover: oklch(0.99 0.005 80);
-  --popover-foreground: oklch(0.35 0.015 140);
-
-  --primary: oklch(0.6 0.06 140);
-  --primary-foreground: oklch(0.99 0 0);
-
-  --secondary: oklch(0.65 0.05 50);
-  --secondary-foreground: oklch(0.99 0 0);
-
-  --muted: oklch(0.94 0.01 100);
-  --muted-foreground: oklch(0.5 0.015 120);
-
-  --accent: oklch(0.93 0.02 20);
-  --accent-foreground: oklch(0.35 0.015 140);
-
-  --destructive: oklch(0.55 0.12 15);
-
-  --border: oklch(0.89 0.01 120);
-  --input: oklch(0.89 0.01 120);
-  --ring: oklch(0.6 0.06 140);
-
-  --chart-1: oklch(0.6 0.06 140);
-  --chart-2: oklch(0.65 0.05 50);
-  --chart-3: oklch(0.7 0.04 80);
-  --chart-4: oklch(0.55 0.05 160);
-  --chart-5: oklch(0.75 0.03 40);
-
-  --sidebar: oklch(0.975 0.008 140);
-  --sidebar-foreground: oklch(0.35 0.015 140);
-  --sidebar-primary: oklch(0.6 0.06 140);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0.01 100);
-  --sidebar-accent-foreground: oklch(0.35 0.015 140);
-  --sidebar-border: oklch(0.89 0.01 120);
-  --sidebar-ring: oklch(0.6 0.06 140);
+  --radius: 0.875rem;
+  /* Native light palette: warm paper, ink, sage and fern. */
+  --background: #F9F8F5;
+  --foreground: #1C1C1A;
+  --card: #FFFFFF;
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: #3A7344;
+  --primary-foreground: #F9F8F5;
+  --secondary: #E7EEDD;
+  --secondary-foreground: #3A5E38;
+  --muted: #EEEDE8;
+  --muted-foreground: #6D6B64;
+  --accent: #E7EEDD;
+  --accent-foreground: #3A5E38;
+  --destructive: #C4392C;
+  --border: #DFDED8;
+  --input: #D8D7D1;
+  --ring: #4A6E47;
 }
 
 /* Dark mode left intact (non-goal) */
@@ -145,30 +121,23 @@
   font-family: var(--font-display), ui-serif, Georgia, serif;
 }
 
-/* --- Tastelog subtle paper grain (behind content) --- */
-@layer base {
-  body {
-    position: relative;
-  }
 
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-
-    /* Tiny SVG fractal noise — lightweight and cacheable */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.25'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-
-    opacity: 0.035;
-    mix-blend-mode: multiply;
-  }
-
-  /* Ensure app content paints above the grain */
-  body > * {
-    position: relative;
-    z-index: 1;
-  }
+/* Shared page structure leaves the warm canvas visible, as on native. */
+.page-surface {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-block: 0;
+  gap: 2rem;
 }
+.page-surface > [data-slot="card-header"],
+.page-surface > [data-slot="card-content"],
+.page-surface > [data-slot="card-footer"] { padding-inline: 0; }
+.page-surface > [data-slot="card-header"] { border: 0; padding-block: 0; }
+.page-title { font-family: var(--font-display), Georgia, serif; font-size: 3.25rem; line-height: 1.1; font-weight: 400; }
+.section-title { font-family: var(--font-display), Georgia, serif; font-size: 2rem; line-height: 1.2; font-weight: 400; }
+.recipe-tile { box-shadow: 0 5px 22px rgb(28 28 26 / 4%); transition: border-color 160ms, box-shadow 160ms; }
+.recipe-tile:hover { border-color: var(--ring); box-shadow: 0 8px 28px rgb(28 28 26 / 7%); }
+a:focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+@media (max-width: 639px) { .page-title { font-size: 2.625rem; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; } }

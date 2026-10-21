@@ -74,8 +74,8 @@ function TokenItem({ token, onRevoke, revoking }: TokenItemProps) {
     <div
       className={
         isInactive
-          ? "rounded-lg border border-neutral-200 bg-neutral-50 p-4"
-          : "rounded-lg border border-neutral-200 bg-white p-4"
+          ? "rounded-lg border border-border bg-background p-4"
+          : "rounded-lg border border-border bg-card p-4"
       }
     >
       <div className="flex items-start justify-between gap-4">
@@ -84,8 +84,8 @@ function TokenItem({ token, onRevoke, revoking }: TokenItemProps) {
             <span
               className={
                 isInactive
-                  ? "text-sm font-medium text-neutral-500"
-                  : "text-sm font-medium text-neutral-900"
+                  ? "text-sm font-medium text-muted-foreground"
+                  : "text-sm font-medium text-foreground"
               }
             >
               {token.name}
@@ -96,14 +96,14 @@ function TokenItem({ token, onRevoke, revoking }: TokenItemProps) {
                   ? "rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
                   : status.variant === "expired"
                     ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700"
-                    : "rounded-full bg-neutral-200 px-2 py-0.5 text-xs text-neutral-600"
+                    : "rounded-full bg-neutral-200 px-2 py-0.5 text-xs text-muted-foreground"
               }
             >
               {status.label}
             </span>
           </div>
 
-          <div className="space-y-0.5 text-xs text-neutral-500">
+          <div className="space-y-0.5 text-xs text-muted-foreground">
             <div>Created: {formatDateTime(token.created_at)}</div>
             {token.last_used_at ? (
               <div>Last used: {formatDateTime(token.last_used_at)}</div>
@@ -178,8 +178,8 @@ export default function TokenList({ onCreateClick }: TokenListProps) {
   );
 
   return (
-    <Card className="border-neutral-200 shadow-sm">
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-neutral-200 py-4">
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border py-4">
         <CardTitle className="text-base font-medium">Capture Tokens</CardTitle>
         <Button onClick={onCreateClick} size="sm">
           Create Token
@@ -188,7 +188,7 @@ export default function TokenList({ onCreateClick }: TokenListProps) {
 
       <CardContent className="p-4">
         {tokensQuery.isLoading ? (
-          <div className="py-8 text-center text-sm text-neutral-500">
+          <div className="py-8 text-center text-sm text-muted-foreground">
             Loading tokens…
           </div>
         ) : tokensQuery.error ? (
@@ -200,10 +200,10 @@ export default function TokenList({ onCreateClick }: TokenListProps) {
           </div>
         ) : tokens.length === 0 ? (
           <div className="py-8 text-center">
-            <div className="text-sm text-neutral-600">
+            <div className="text-sm text-muted-foreground">
               No capture tokens yet.
             </div>
-            <div className="mt-1 text-xs text-neutral-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               Create a token to enable iOS Shortcuts or other integrations.
             </div>
           </div>
@@ -220,7 +220,7 @@ export default function TokenList({ onCreateClick }: TokenListProps) {
 
             {inactiveTokens.length > 0 && activeTokens.length > 0 ? (
               <div className="pt-2">
-                <div className="mb-2 text-xs font-medium text-neutral-500">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">
                   Inactive
                 </div>
               </div>

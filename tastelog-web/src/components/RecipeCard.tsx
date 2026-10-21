@@ -111,18 +111,18 @@ export default function RecipeCard({
   }
 
   return (
-    <Card className="border-neutral-200 shadow-sm">
+    <Card className="page-surface">
       {/* Header */}
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-neutral-200 py-4">
+      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border py-4">
         {/* Micro-pass: apply editorial display font to heading only */}
-        <div className="font-display text-base leading-snug tracking-tight">{heading}</div>
+        <div className="page-title">{heading}</div>
 
         {confidenceLabel ? (
-          <div className="rounded-full border border-neutral-300 bg-neutral-50 px-2.5 py-1 text-xs text-neutral-700">
+          <div className="rounded-full border border-neutral-300 bg-background px-2.5 py-1 text-xs text-foreground">
             {confidenceLabel}
           </div>
         ) : (
-          <div className="text-xs text-neutral-500" aria-hidden="true">
+          <div className="text-xs text-muted-foreground" aria-hidden="true">
             &nbsp;
           </div>
         )}
@@ -130,16 +130,16 @@ export default function RecipeCard({
 
       {/* Body */}
       <CardContent className="px-5 py-5">
-        <div className="space-y-6">
+        <div className="space-y-8">
           {imagePreviewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={imagePreviewUrl} alt="Recipe source" className="max-h-64 rounded-lg object-contain" />
           ) : null}
           {/* Main Fields */}
-          <div className="space-y-6">
+          <div className="space-y-8">
             {/* Title */}
-            <div className="grid gap-2 md:grid-cols-[80px_1fr] md:items-center">
-              <div className="text-sm font-medium text-neutral-700">Title:</div>
+            <div className="grid gap-2">
+              <div className="text-sm font-medium text-foreground">Title:</div>
               <Input
                 aria-label="Recipe title"
                 value={value.title}
@@ -192,11 +192,11 @@ export default function RecipeCard({
 
             {/* Ingredients */}
             <div className="space-y-3">
-              <div className="text-sm font-semibold">Ingredients:</div>
+              <div className="section-title">Ingredients</div>
 
               <div className="space-y-2">
                 {value.ingredients.length === 0 ? (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
                     No ingredients yet.
                   </div>
                 ) : null}
@@ -204,7 +204,7 @@ export default function RecipeCard({
                 {value.ingredients.map((ing) => (
                   <div
                     key={ing.id}
-                    className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-white p-2"
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
                   >
                     <Input
                       aria-label="Ingredient"
@@ -212,7 +212,7 @@ export default function RecipeCard({
                       onChange={(e) => updateIngredient(ing.id, e.target.value)}
                       disabled={disabled}
                       placeholder="e.g. 2 cups flour"
-                      className="h-9"
+                      className="h-12"
                     />
 
                     <Button
@@ -235,11 +235,11 @@ export default function RecipeCard({
 
             {/* Steps */}
             <div className="space-y-3">
-              <div className="text-sm font-semibold">Steps:</div>
+              <div className="section-title">Steps</div>
 
               <div className="space-y-2">
                 {value.steps.length === 0 ? (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
                     No steps yet.
                   </div>
                 ) : null}
@@ -247,9 +247,9 @@ export default function RecipeCard({
                 {value.steps.map((step, idx) => (
                   <div
                     key={step.id}
-                    className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-white p-2"
+                    className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-3"
                   >
-                    <div className="mt-2 w-6 text-right text-xs text-neutral-500">
+                    <div className="mt-2 w-6 text-right text-xs text-muted-foreground">
                       {idx + 1}.
                     </div>
 
@@ -259,7 +259,7 @@ export default function RecipeCard({
                       onChange={(e) => updateStep(step.id, e.target.value)}
                       disabled={disabled}
                       placeholder="Editable step…"
-                      className="h-9"
+                      className="h-12"
                     />
 
                     <Button
@@ -284,19 +284,19 @@ export default function RecipeCard({
       </CardContent>
 
       {/* Footer */}
-      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 px-5 py-4">
+      <CardFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-5 py-4">
         <Button type="button" variant="outline" onClick={onCancel} disabled={disabled}>
           Cancel
         </Button>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button type="button" variant="outline" onClick={onResetEdits} disabled={disabled}>
             Reset edits
           </Button>
 
           <Button
             type="button"
-            className="bg-emerald-600 text-white hover:bg-emerald-600/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onSave}
             disabled={disabled || saveDisabled}
           >

@@ -173,13 +173,13 @@ export default function CreateTokenModal({
       className="fixed inset-0 z-50 m-0 h-full w-full max-h-full max-w-full bg-black/50 p-4 backdrop:bg-transparent"
     >
       <div className="flex min-h-full items-center justify-center">
-        <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-6 shadow-lg">
+        <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-lg">
           {state.step === "form" ? (
             <>
-              <h2 className="text-lg font-semibold text-neutral-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 Create Capture Token
               </h2>
-              <p className="mt-1 text-sm text-neutral-600">
+              <p className="mt-1 text-sm text-muted-foreground">
                 Create a token to enable iOS Shortcuts or other integrations to
                 capture recipes.
               </p>
@@ -197,7 +197,7 @@ export default function CreateTokenModal({
                     disabled={createMutation.isPending}
                     autoComplete="off"
                   />
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-muted-foreground">
                     A descriptive name to identify this token.
                   </p>
                 </div>
@@ -228,7 +228,7 @@ export default function CreateTokenModal({
             </>
           ) : (
             <>
-              <h2 className="text-lg font-semibold text-neutral-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 Token Created
               </h2>
 
@@ -261,8 +261,8 @@ export default function CreateTokenModal({
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2">
-                <p className="text-xs text-neutral-600">
+              <div className="mt-4 rounded-lg border border-border bg-background px-3 py-2">
+                <p className="text-xs text-muted-foreground">
                   <strong>iOS Shortcuts Setup:</strong> Open Keychain, add a new
                   password with name{" "}
                   <code className="rounded bg-neutral-200 px-1">

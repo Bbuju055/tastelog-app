@@ -105,18 +105,18 @@ export default function AppHeader() {
   }
 
   return (
-    <header className="border-b border-neutral-200 bg-white">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-5">
-          <Link href="/" className="text-sm font-semibold tracking-tight">
+    <header className="border-b border-border bg-background">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-y-3 px-5 py-5 sm:px-8">
+        <div className="flex items-center gap-5 sm:gap-10">
+          <Link href="/" className="font-display text-3xl font-semibold tracking-tight">
             Tastelog
           </Link>
 
-          <nav className="flex items-center gap-3 text-sm text-neutral-600">
-            <Link href="/add" className="hover:text-neutral-900">
+          <nav aria-label="Main navigation" className="flex items-center gap-4 text-base text-muted-foreground">
+            <Link href="/add" aria-current={pathname === "/add" ? "page" : undefined} className="rounded-full px-2 py-2 hover:text-primary aria-[current=page]:text-primary">
               Add
             </Link>
-            <Link href="/settings/tokens" className="hover:text-neutral-900">
+            <Link href="/settings/tokens" aria-current={pathname === "/settings/tokens" ? "page" : undefined} className="rounded-full px-2 py-2 hover:text-primary aria-[current=page]:text-primary">
               Tokens
             </Link>
           </nav>
@@ -126,10 +126,10 @@ export default function AppHeader() {
           {!supabaseAvailable ? (
             <div className="text-xs text-amber-600">Auth unavailable</div>
           ) : loading ? (
-            <div className="text-xs text-neutral-500">Loading…</div>
+            <div className="text-xs text-muted-foreground">Loading…</div>
           ) : user ? (
             <>
-              <div className="hidden text-xs text-neutral-500 sm:block">
+              <div className="hidden text-xs text-muted-foreground sm:block">
                 {user.email ?? "Signed in"}
               </div>
 

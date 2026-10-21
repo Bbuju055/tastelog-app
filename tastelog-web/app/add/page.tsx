@@ -52,10 +52,10 @@ export default function AddPage() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="page-surface">
         <CardHeader>
-          <CardTitle>Upload Recipe</CardTitle>
-          <p className="mt-1 text-sm text-neutral-600">
+          <CardTitle className="page-title">Upload Recipe</CardTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
             Upload a photo or single-page PDF. We&apos;ll parse it into a draft you can review
             before saving.
           </p>
@@ -81,7 +81,7 @@ export default function AddPage() {
           />
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-xs text-neutral-600">
+            <div className="text-xs text-muted-foreground">
               {filename ? (
                 <>
                   Selected: <span className="font-medium">{filename}</span>
@@ -103,7 +103,7 @@ export default function AddPage() {
             </Button>
           </div>
 
-          <div className="text-xs text-neutral-500">
+          <div className="text-xs text-muted-foreground">
             Nothing is saved until you review and confirm the draft.
           </div>
         </CardContent>

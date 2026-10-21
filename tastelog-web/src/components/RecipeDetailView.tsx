@@ -104,19 +104,19 @@ export default function RecipeDetailView({ recipeId }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8">
-      <Card>
+    <div className="mx-auto w-full max-w-4xl">
+      <Card className="page-surface">
         <CardHeader className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1.5">
-              <CardTitle className="font-display text-2xl leading-tight tracking-tight">
+              <CardTitle className="page-title">
                 {loading ? "Loading…" : title}
               </CardTitle>
 
               {!loading && recipe ? (
-                <div className="text-sm text-neutral-600">
+                <div className="text-sm text-muted-foreground">
                   Updated{" "}
-                  <span className="font-medium text-neutral-700">
+                  <span className="font-medium text-foreground">
                     {new Date(recipe.updated_at).toLocaleString()}
                   </span>
                 </div>
@@ -158,7 +158,7 @@ export default function RecipeDetailView({ recipeId }: Props) {
               <div className="h-4 w-3/4 rounded bg-neutral-200" />
             </div>
           ) : !recipe ? (
-            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm leading-relaxed text-neutral-700">
+            <div className="rounded-xl border border-border bg-background px-4 py-3 text-sm leading-relaxed text-foreground">
               Recipe not available.
             </div>
           ) : (
@@ -173,12 +173,12 @@ export default function RecipeDetailView({ recipeId }: Props) {
 
               {/* Ingredients */}
               <section className="space-y-3">
-                <h2 className="font-display text-lg leading-snug tracking-tight">
+                <h2 className="section-title">
                   Ingredients
                 </h2>
 
                 {scaledIngredients.length > 0 ? (
-                  <ul className="space-y-2 text-[15px] leading-relaxed text-neutral-800">
+                  <ul className="space-y-2 text-[15px] leading-relaxed text-foreground">
                     {scaledIngredients.map(({ ingredient, formatted }) => (
                       <li key={ingredient.id} className="flex gap-2">
                         <span className="text-neutral-400">•</span>
@@ -189,7 +189,7 @@ export default function RecipeDetailView({ recipeId }: Props) {
                     ))}
                   </ul>
                 ) : (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
                     No ingredients provided.
                   </div>
                 )}
@@ -197,15 +197,15 @@ export default function RecipeDetailView({ recipeId }: Props) {
 
               {/* Steps */}
               <section className="space-y-3">
-                <h2 className="font-display text-lg leading-snug tracking-tight">
+                <h2 className="section-title">
                   Steps
                 </h2>
 
                 {sortedSteps.length > 0 ? (
-                  <ol className="space-y-4 text-[15px] leading-relaxed text-neutral-800">
+                  <ol className="space-y-4 text-[15px] leading-relaxed text-foreground">
                     {sortedSteps.map((step, idx) => (
                       <li key={step.id} className="flex gap-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-medium text-neutral-700">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-medium text-foreground">
                           {idx + 1}
                         </span>
                         <span className="pt-0.5">{step.instruction}</span>
@@ -213,7 +213,7 @@ export default function RecipeDetailView({ recipeId }: Props) {
                     ))}
                   </ol>
                 ) : (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
                     No steps provided.
                   </div>
                 )}
@@ -232,12 +232,12 @@ function IngredientDisplay({ formatted }: { formatted: FormattedIngredient }) {
   return (
     <>
       {main}
-      {prep && <span className="text-neutral-600">, {prep}</span>}
+      {prep && <span className="text-muted-foreground">, {prep}</span>}
       {annotation && (
-        <span className="ml-1 text-sm text-neutral-500">{annotation}</span>
+        <span className="ml-1 text-sm text-muted-foreground">{annotation}</span>
       )}
       {showNotScaled && (
-        <span className="ml-1 rounded bg-neutral-200 px-1.5 py-0.5 text-xs text-neutral-600">
+        <span className="ml-1 rounded bg-neutral-200 px-1.5 py-0.5 text-xs text-muted-foreground">
           not scaled
         </span>
       )}
