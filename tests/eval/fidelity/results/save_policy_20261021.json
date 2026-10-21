@@ -1,0 +1,308 @@
+{
+  "scope": "Offline structural guard applied to historical October 18 parsed outputs. Not a capture rerun or source-fidelity evaluation. Current PDF policy separately rejects all multi-page inputs.",
+  "checked": 36,
+  "blocked": 6,
+  "limitation": "Nonempty invented or truncated instructions can pass. No completeness guarantee.",
+  "results": [
+    {
+      "case": "avocado_salad",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad_url",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "beef_bourguignon",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.88,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "caramelized_onions",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "croque_monsieur",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "french_onion_soup",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.82,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "garlic_aioli",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "halal_guys_sauces",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.82,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "wikibooks_french_onion_soup_url",
+      "arm": "production",
+      "run": 1,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad_url",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "beef_bourguignon",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "caramelized_onions",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "croque_monsieur",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "french_onion_soup",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.72,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "garlic_aioli",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "halal_guys_sauces",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.72,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "wikibooks_french_onion_soup_url",
+      "arm": "baseline",
+      "run": 1,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad_url",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "beef_bourguignon",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.88,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "caramelized_onions",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "croque_monsieur",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "french_onion_soup",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.82,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "garlic_aioli",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "halal_guys_sauces",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.82,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "wikibooks_french_onion_soup_url",
+      "arm": "production",
+      "run": 2,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "avocado_salad_url",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.95,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "beef_bourguignon",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.91,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "caramelized_onions",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "croque_monsieur",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "french_onion_soup",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.62,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "garlic_aioli",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.97,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    },
+    {
+      "case": "halal_guys_sauces",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.72,
+      "missing_sections": [
+        "instructions"
+      ],
+      "save_allowed_by_structure": false
+    },
+    {
+      "case": "wikibooks_french_onion_soup_url",
+      "arm": "baseline",
+      "run": 2,
+      "confidence": 0.92,
+      "missing_sections": [],
+      "save_allowed_by_structure": true
+    }
+  ]
+}

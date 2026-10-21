@@ -1,3 +1,4 @@
+import { missingRecipeSections } from "../../../lib/extractionReview";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
@@ -119,6 +120,14 @@ function buildPatch(
     patch.cook_time = edited.cook_time || undefined;
   }
 
+  edited = { ...edited,
+    ingredients: edited.ingredients.filter((ing) => (ing.raw_text ?? formatIngredientLine(ing)).trim()).map((ing) => {
+      if (original.ingredients.some((row) => ["name", "quantity", "unit", "prep"].every((key) => row[key as keyof IngredientData] === ing[key as keyof IngredientData]) && (row.raw_text ?? formatIngredientLine(row)) === ing.raw_text)) return ing;
+      const text = (ing.raw_text ?? formatIngredientLine(ing)).trim();
+      return { name: text, raw_text: text, quantity: null, unit: null, prep: null };
+    }),
+    steps: edited.steps.filter((step) => step.instruction.trim()).map((step, idx) => ({ position: idx + 1, instruction: step.instruction.trim() })),
+  };
   const origIngJson = JSON.stringify(original.ingredients);
   const editIngJson = JSON.stringify(edited.ingredients);
   if (editIngJson !== origIngJson) {
@@ -259,6 +268,10 @@ export default function DraftReviewScreen() {
       return;
     }
 
+    if (missingRecipeSections(
+      editState.ingredients.map((ing) => ing.raw_text ?? formatIngredientLine(ing)),
+      editState.steps.map((step) => step.instruction),
+    ).length > 0) return;
     const patch = buildPatch(draft, editState);
     confirmMutation.mutate(
       { draftId, patch },
@@ -387,6 +400,10 @@ export default function DraftReviewScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={s.heading}>Review Draft</Text>
+        <Text style={s.confidence}>Check ingredients and instructions against the source. Extraction can miss or invent content, even when it looks complete.</Text>
+        {missingRecipeSections(editState.ingredients.map((ing) => ing.raw_text ?? formatIngredientLine(ing)), editState.steps.map((step) => step.instruction)).map((section) => (
+          <Text key={section} style={s.errorText} accessibilityRole="alert">Missing {section}. Add these from the source before saving.</Text>
+        ))}
 
         {/* Source label */}
         {renderDraft.source_url ? (
@@ -474,6 +491,8 @@ export default function DraftReviewScreen() {
           </View>
         ))}
 
+        <Button title="Add ingredient" variant="outline" disabled={isBusy} onPress={() => updateField("ingredients", [...editState.ingredients, { name: "", raw_text: "", quantity: null, unit: null, prep: null }])} />
+
         {/* Steps */}
         <Text style={s.sectionTitle}>Steps</Text>
         {editState.steps.map((step, idx) => (
@@ -492,19 +511,15 @@ export default function DraftReviewScreen() {
           </View>
         ))}
 
-        {/* Confidence / status */}
+        <Button title="Add instruction" variant="outline" disabled={isBusy} onPress={() => updateField("steps", [...editState.steps, { position: editState.steps.length + 1, instruction: "" }])} />
+
+        {/* Ingredient structure is independent of source completeness. */}
         {renderDraft.source_url && allIngredientsUnstructured(editState.ingredients) ? (
           <View style={s.fallbackNotice}>
             <Text style={s.fallbackNoticeText}>
               Ingredients imported as text — scaling and grocery structure unavailable for this recipe.
             </Text>
           </View>
-        ) : renderDraft.source_url ? (
-          <Text style={s.confidence}>Fully structured recipe</Text>
-        ) : renderDraft.confidence_score != null ? (
-          <Text style={s.confidence}>
-            AI confidence: {Math.round(renderDraft.confidence_score * 100)}%
-          </Text>
         ) : null}
 
         {/* Mutation error */}
@@ -545,7 +560,7 @@ export default function DraftReviewScreen() {
             onPress={handleSave}
             variant="outline"
             loading={confirmMutation.isPending}
-            disabled={isBusy || !editState.title.trim()}
+            disabled={isBusy || !editState.title.trim() || missingRecipeSections(editState.ingredients.map((ing) => ing.raw_text ?? formatIngredientLine(ing)), editState.steps.map((step) => step.instruction)).length > 0}
           />
           <Button
             title="Discard"

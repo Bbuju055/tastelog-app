@@ -27,7 +27,7 @@ function formatBytes(bytes: number): string {
 function humanAcceptList(accept: string[]): string {
   return accept
     .map((t) => {
-      if (t === "application/pdf") return "PDF";
+      if (t === "application/pdf") return "single-page PDF";
       if (t.startsWith("image/")) return t.replace("image/", "").toUpperCase();
       return t;
     })
@@ -36,7 +36,7 @@ function humanAcceptList(accept: string[]): string {
 
 export default function UploadDropzone({
   accept = DEFAULT_ACCEPT,
-  maxSizeBytes = 15 * 1024 * 1024, // 15MB conservative; backend may reject bigger (413).
+  maxSizeBytes = 10 * 1024 * 1024, // Match the backend per-file limit.
   disabled,
   onFileSelected,
 }: Props) {
@@ -122,7 +122,7 @@ export default function UploadDropzone({
 
             <div className="space-y-2">
               <div className="text-sm font-semibold">
-                Drag & drop a recipe image/PDF
+                Drop a recipe image or single-page PDF
               </div>
               <div className="text-xs text-neutral-600">
                 Or click to choose a file

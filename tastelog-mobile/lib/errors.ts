@@ -44,6 +44,7 @@ export function isApiError(err: unknown): err is ApiError {
  */
 export function formatFastApiDetail(detail: FastApiDetail): string | null {
   if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && detail.code === "RECIPE_INCOMPLETE") return "Add at least one ingredient and one instruction from the source before saving.";
 
   if (Array.isArray(detail) && detail.length > 0) {
     const msgs: string[] = [];

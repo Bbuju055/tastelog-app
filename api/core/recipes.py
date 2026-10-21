@@ -16,6 +16,7 @@ import filetype
 from supabase import Client
 
 from api.core.exceptions import RecipeNotFoundError, StorageError, TastelogError
+from api.core.extraction_review import require_recipe_content
 from api.core.parser import ParserConfig, get_default_config, parse_recipe_image
 from api.core.step_mapping import (
     EDIT_MAPPING_MAX_RETRIES,
@@ -293,6 +294,8 @@ def capture_recipe(
             config=parser_config,
             logger=logger,
         )
+
+        require_recipe_content(parsed.get("ingredients"), parsed.get("steps"))
 
         recipe_data = {
             "user_id": str(user_id),

@@ -1,20 +1,21 @@
-# Tastelog Web
+# Web client
 
-Next.js 16 / React 19 frontend for Tastelog. Talks to the FastAPI backend through an `/api/*` rewrite (see `next.config.ts`), validates every response with Zod, and uses TanStack Query for data fetching.
+Next.js / React, with TanStack Query and Zod. Start with the [root demo instructions](../README.md) for a working backend and login.
 
-## Run
+To connect to another backend, run these commands here:
 
 ```bash
 npm ci
-cp .env.example .env.local   # points at http://localhost:8000 by default
-npm run dev                  # http://localhost:3000
+cp -n .env.example .env.local
 ```
 
-## Test
+Edit `.env.local`: set the API URL and Supabase URL/anon key for authenticated cookbook access, then run `npm run dev`. The `/api/*` rewrite is in [next.config.ts](next.config.ts). Never put service-role keys in frontend settings.
 
 ```bash
-npm test        # vitest, 151 tests
+npm test
 npm run lint
+npx tsc --noEmit
+npm run build
 ```
 
-Notable code: `src/lib/ingredients/` is an exact-fraction ingredient scaling engine (BigInt rationals, no floats). `src/lib/api/schemas.ts` mirrors the Python Pydantic models.
+Pages are in [app/](app/), response schemas in [src/lib/api/schemas.ts](src/lib/api/schemas.ts), and exact-fraction scaling in [src/lib/ingredients/](src/lib/ingredients/).

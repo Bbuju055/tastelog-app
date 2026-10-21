@@ -8,7 +8,8 @@
  * - Strict: throws on first access if required NEXT_PUBLIC_* env vars are missing.
  */
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { hasSupabaseEnv } from "./env";
 export { hasSupabaseEnv };
@@ -53,13 +54,9 @@ export function getSupabaseBrowserClient(): SupabaseClient {
   const url = getRequiredPublicEnv("NEXT_PUBLIC_SUPABASE_URL");
   const anonKey = getRequiredPublicEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
-  _supabase = createClient(url, anonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
+  // Middleware and server components read cookies, not localStorage.
+  // Use the matching SSR client so a successful login survives navigation.
+  _supabase = createBrowserClient(url, anonKey);
 
   return _supabase;
 }

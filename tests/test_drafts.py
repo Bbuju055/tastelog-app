@@ -1500,3 +1500,73 @@ class TestDraftCaptureIdempotency:
         )
         hashes = [h for _, _, h, _ in idem["reserve"]]
         assert len(hashes) == 2 and hashes[0] == hashes[1]
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_pdf_rejection_real_parser_cleans_entire_batch(provider_contract_client, monkeypatch, broken):
+    from pathlib import Path
+    from unittest.mock import Mock
+    import api.routes.drafts as routes
+    from api.core.capture_wire import PDF_MESSAGES
+
+    client = Mock()
+    monkeypatch.setattr(routes, "get_anthropic_client", lambda: client)
+    uploaded = []
+    def upload(path, **kwargs):
+        uploaded.append(path)
+        return f"key-{len(uploaded)}"
+    monkeypatch.setattr(routes, "upload_image", upload)
+    create = Mock()
+    monkeypatch.setattr(routes, "_create_draft_tracked", create)
+    inputs = Path(__file__).parent / "eval/fidelity/inputs"
+    pdf = b"%PDF-1.4\nbroken" if broken else (inputs / "french_onion_soup.pdf").read_bytes()
+    response = provider_contract_client.post("/api/drafts/capture", files=[
+        ("image", ("first.pdf", (inputs / "garlic_aioli.pdf").read_bytes(), "application/pdf")),
+        ("image", ("second.pdf", pdf, "application/pdf")),
+    ])
+    code = "PDF_PAGE_COUNT_FAILED" if broken else "PDF_MULTIPAGE_UNSUPPORTED"
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"code": code, "message": PDF_MESSAGES[code]}
+    client.messages.create.assert_not_called()
+    create.assert_not_called()
+    assert provider_contract_client.fake_db.storage.bucket.removed == [["key-1", "key-2"]]
+    assert all(not Path(path).exists() for path in uploaded)
+
+@pytest.mark.parametrize("body", [
+    {"ingredients": []}, {"steps": []},
+    {"steps": [{"position": 1, "instruction": "   "}]},
+    {"ingredients": [{"name": "   "}]},
+    {"ingredients": [{"name": "salt", "raw_text": "   "}]},
+])
+def test_confirm_refuses_empty_effective_sections(confirm_client, body):
+    response, save, mapping = TestConfirmMappingFlow()._post(confirm_client, body)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "RECIPE_INCOMPLETE"
+    save.assert_not_called()
+    mapping.assert_not_called()
+
+
+def test_high_confidence_incomplete_draft_can_be_corrected(confirm_client):
+    draft = {**_DRAFT_ROW, "confidence_score": 0.99, "steps": []}
+    response, save, _ = TestConfirmMappingFlow()._post(confirm_client, draft_row=draft)
+    assert response.status_code == 422
+    save.assert_not_called()
+    response, save, _ = TestConfirmMappingFlow()._post(confirm_client,
+        {"steps": [{"position": 1, "instruction": "Mix according to the source."}]}, draft_row=draft)
+    assert response.status_code == 200
+    save.assert_called_once()
+
+
+def test_incomplete_extraction_remains_reviewable_draft(provider_contract_client, monkeypatch):
+    import api.routes.drafts as routes
+    from unittest.mock import Mock
+    parsed = {"title": "Missing method", "confidence": 0.99,
+              "ingredients": [{"name": "salt"}], "steps": []}
+    monkeypatch.setattr(routes, "upload_image", lambda *a, **k: "asset")
+    monkeypatch.setattr(routes, "parse_recipe_images", lambda *a, **k: parsed)
+    row = {**_ps1_fake_draft_row(), "steps": [], "confidence_score": 0.99}
+    create = Mock(return_value=row)
+    monkeypatch.setattr(routes, "_create_draft_tracked", create)
+    response = _ps1_post_images(provider_contract_client)
+    assert response.status_code == 200
+    assert response.json()["steps"] == []
+    assert create.call_args.kwargs["steps"] == []

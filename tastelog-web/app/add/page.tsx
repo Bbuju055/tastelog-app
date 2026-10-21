@@ -56,7 +56,7 @@ export default function AddPage() {
         <CardHeader>
           <CardTitle>Upload Recipe</CardTitle>
           <p className="mt-1 text-sm text-neutral-600">
-            Upload a photo or PDF. We&apos;ll parse it into a draft you can review
+            Upload a photo or single-page PDF. We&apos;ll parse it into a draft you can review
             before saving.
           </p>
 

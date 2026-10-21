@@ -137,9 +137,6 @@ export default function HomePage() {
                     className="rounded-xl border border-neutral-200 bg-white p-4 hover:bg-neutral-50"
                   >
                     <div className="text-sm font-semibold">{title}</div>
-                    <div className="mt-1 text-xs text-neutral-500 break-all">
-                      {String(id)}
-                    </div>
                   </Link>
                 );
               })}

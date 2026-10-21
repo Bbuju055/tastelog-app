@@ -91,6 +91,11 @@ function mapHttpError(err: ApiError): CaptureErrorInfo {
   const code = stableErrorCode(err);
   if (code !== null) {
     switch (code) {
+      case "PDF_MULTIPAGE_UNSUPPORTED":
+        return { title: "PDF not supported", body: "Multi-page PDFs aren't supported yet. No recipe was saved. Use the recipe's source URL instead.", retryable: false };
+      case "PDF_PAGE_COUNT_FAILED":
+        return { title: "PDF not supported", body: "We couldn't verify this PDF's page count. No recipe was saved. Use an unencrypted single-page PDF or the recipe's source URL instead.", retryable: false };
+
       case "RECIPE_UNREADABLE":
         return UNREADABLE_INFO;
       case "RECIPE_PROVIDER_UNAVAILABLE":

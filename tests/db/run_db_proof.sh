@@ -20,7 +20,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-IMG="public.ecr.aws/supabase/postgres:17.6.1.143"
+IMG="$(cat "$HERE/postgres-image.txt")"
 NAME="tastelog-026-proof-$$"
 PGPASSWORD_VAL="proof-password"
 
@@ -56,7 +56,8 @@ cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "== starting $IMG as $NAME =="
-docker run -d --name "$NAME" \
+bash "$HERE/prepare_image.sh"
+docker run --pull=never -d --name "$NAME" \
   -e POSTGRES_PASSWORD="$PGPASSWORD_VAL" \
   "$IMG" >/dev/null
 

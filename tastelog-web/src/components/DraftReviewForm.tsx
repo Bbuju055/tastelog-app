@@ -9,11 +9,12 @@
  * - Confirm sends edited payload once, explicitly.
  */
 
+import { missingRecipeSections } from "@/lib/extractionReview";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { confirmDraft, deleteDraft, getDraft } from "@/lib/api/endpoints";
+import { confirmDraft, getDraft } from "@/lib/api/endpoints";
 import { apiErrorMessage } from "@/lib/useApiErrorMessage";
 import RecipeCard, { RecipeCardValue } from "@/components/RecipeCard";
 import { buildConfirmPatch, clearedFields, draftToCardValue } from "@/lib/drafts/reviewPatch";
@@ -32,25 +33,30 @@ type DraftReadyProps = {
   draft: DraftResponse;
   errorMsg: string | null;
   disabled: boolean;
-  onTryAgain: () => void;
+  onResetEdits: () => void;
   onConfirm: (patch?: DraftConfirmRequest) => void;
   onCancel: () => void;
 };
 
 /** Form component that mounts only when draft exists (allows clean state initialization) */
-function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm, onCancel }: DraftReadyProps) {
+function DraftReviewFormReady({ draft, errorMsg, disabled, onResetEdits, onConfirm, onCancel }: DraftReadyProps) {
   const initialCardValue = useMemo<RecipeCardValue>(() => draftToCardValue(draft), [draft]);
 
   const [cardValue, setCardValue] = useState<RecipeCardValue>(() => initialCardValue);
   // Confirm cannot clear a field the draft had a value for; refuse rather than silently keep it.
   const [clearedMsg, setClearedMsg] = useState<string | null>(null);
   const shownError = clearedMsg ?? errorMsg;
+  const missing = missingRecipeSections(cardValue.ingredients.map((row) => row.text), cardValue.steps.map((row) => row.text));
 
   return (
     <div className="space-y-4">
+      <div className="rounded-lg border border-neutral-200 p-3 text-sm" aria-live="polite">
+        <p>Check ingredients and instructions against the source. Extraction can miss or invent content, even when it looks complete.</p>
+        {missing.length > 0 ? <p role="alert">Missing {missing.join(" and ")}. Add these from the source before saving. This draft has not been saved as a recipe.</p> : null}
+      </div>
       <RecipeCard
         heading="Review Recipe"
-        confidenceLabel={typeof draft.confidence_score === "number" ? String(draft.confidence_score) : undefined}
+        saveDisabled={missing.length > 0}
         imagePreviewUrl={null}
         value={cardValue}
         onChange={(next) => {
@@ -59,12 +65,13 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm
         }}
         disabled={disabled}
         onCancel={onCancel}
-        onTryAgain={() => {
+        onResetEdits={() => {
           setCardValue(initialCardValue);
           setClearedMsg(null);
-          onTryAgain();
+          onResetEdits();
         }}
-        onLooksGood={() => {
+        onSave={() => {
+          if (missing.length > 0) return;
           const cleared = clearedFields(draft, cardValue);
           if (cleared.length > 0) {
             setClearedMsg(`Confirm can't clear ${cleared.join(", ")}. Enter a value or restore the original.`);
@@ -84,17 +91,7 @@ function DraftReviewFormReady({ draft, errorMsg, disabled, onTryAgain, onConfirm
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-3">
-        <div className="text-sm font-medium">Raw draft (debug)</div>
-        <pre className="mt-2 max-h-[260px] overflow-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-700">
-          {JSON.stringify(draft, null, 2)}
-        </pre>
-      </div>
 
-      <div className="text-xs text-neutral-500">
-        Confirm sends edits once. No background saves. &quot;Try Again&quot; refetches the draft (no re-parse
-        endpoint exists yet).
-      </div>
     </div>
   );
 }
@@ -134,17 +131,7 @@ export default function DraftReviewForm({ draftId }: Props) {
     onError: (err) => setManualErrorMsg(apiErrorMessage(err)),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteDraft(draftId),
-    onSuccess: () => {
-      qc.removeQueries({ queryKey: draftQueryKey(draftId) });
-      router.replace("/");
-      router.refresh();
-    },
-    onError: (err) => setManualErrorMsg(apiErrorMessage(err)),
-  });
-
-  const submitting = confirmMutation.isPending || deleteMutation.isPending;
+  const submitting = confirmMutation.isPending;
   const disabled = busy || submitting;
 
   if (draftQuery.isLoading) {
@@ -176,9 +163,9 @@ export default function DraftReviewForm({ draftId }: Props) {
       draft={draft}
       errorMsg={errorMsg}
       disabled={disabled}
-      onTryAgain={() => {
+      onResetEdits={() => {
         setManualErrorMsg(null);
-        draftQuery.refetch();
+
       }}
       onConfirm={(patch) => {
         setManualErrorMsg(null);

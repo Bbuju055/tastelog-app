@@ -1,0 +1,1 @@
+public.ecr.aws/supabase/postgres:17.6.1.143

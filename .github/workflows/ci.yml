@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - run: python -m pip install --upgrade pip pip-tools
       - run: python -m piptools sync requirements-dev.txt
+      # Real PDF regression fixtures exercise page counting and rasterization.
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: python -m pytest -q
 
   web:
@@ -67,8 +69,32 @@ jobs:
   db-proof:
     name: DB proof (real PostgreSQL)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      # Applies the reconstructed base schema + migrations 003..027 on the
+      - name: Check image acquisition failure handling
+        run: python3 tests/db/test_prepare_image.py
+      # Exact image/version + architecture key; never restore a different version.
+      - uses: actions/cache/restore@v4
+        id: db-image
+        with:
+          path: ${{ runner.temp }}/db-proof-image.tar
+          key: db-proof-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tests/db/postgres-image.txt') }}
+      - name: Load cached database image
+        if: steps.db-image.outputs.cache-hit == 'true'
+        run: docker load --input "$RUNNER_TEMP/db-proof-image.tar"
+      - name: Prepare database image
+        run: bash tests/db/prepare_image.sh
+      - name: Archive database image
+        if: steps.db-image.outputs.cache-hit != 'true' && github.event_name == 'push'
+        run: docker save --output "$RUNNER_TEMP/db-proof-image.tar" "$(cat tests/db/postgres-image.txt)"
+      # Save before assertions so an unrelated SQL failure doesn't force another
+      # registry download. Only trusted main pushes populate the shared cache.
+      - uses: actions/cache/save@v4
+        if: steps.db-image.outputs.cache-hit != 'true' && github.event_name == 'push'
+        with:
+          path: ${{ runner.temp }}/db-proof-image.tar
+          key: ${{ steps.db-image.outputs.cache-primary-key }}
+      # Applies the reconstructed base schema + migrations 003..028 on the
       # production Postgres image and runs the proof batteries (needs Docker).
       - run: tests/db/run_db_proof.sh

@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-21",
+  "scope": "Offline PDF input policy only; no model calls, no extraction accuracy claim",
+  "results": [
+    {
+      "input": "avocado_salad.pdf",
+      "outcome": "single_page_encoded"
+    },
+    {
+      "input": "beef_bourguignon.pdf",
+      "outcome": "rejected",
+      "code": "PDF_MULTIPAGE_UNSUPPORTED"
+    },
+    {
+      "input": "caramelized_onions.pdf",
+      "outcome": "single_page_encoded"
+    },
+    {
+      "input": "croque_monsieur.pdf",
+      "outcome": "rejected",
+      "code": "PDF_MULTIPAGE_UNSUPPORTED"
+    },
+    {
+      "input": "french_onion_soup.pdf",
+      "outcome": "rejected",
+      "code": "PDF_MULTIPAGE_UNSUPPORTED"
+    },
+    {
+      "input": "garlic_aioli.pdf",
+      "outcome": "single_page_encoded"
+    },
+    {
+      "input": "halal_guys_sauces.pdf",
+      "outcome": "rejected",
+      "code": "PDF_MULTIPAGE_UNSUPPORTED"
+    }
+  ]
+}

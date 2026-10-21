@@ -115,3 +115,11 @@ describe("captureErrorMessage — legacy and FastAPI shapes", () => {
     expect(info.retryable).toBe(true);
   });
 });
+
+it.each(["PDF_MULTIPAGE_UNSUPPORTED", "PDF_PAGE_COUNT_FAILED"])("explains %s without offering a same-file retry", (code) => {
+  const info = captureErrorMessage(httpError(422, { code, message: "untrusted text" }));
+  expect(info.body).toContain("No recipe was saved.");
+  expect(info.body).toContain("source URL");
+  expect(info.body).not.toContain("untrusted text");
+  expect(info.retryable).toBe(false);
+});

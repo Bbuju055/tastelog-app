@@ -54,6 +54,9 @@ struct CaptureFailureMapperContract {
     }
 
     static func main() {
+        expect(status: 422, body: "{\"detail\":{\"code\":\"RECIPE_INCOMPLETE\"}}", input: .document, toBe: "No recipe was saved. The capture is missing ingredients or instructions. Open Tastelog to capture and review the complete source.", "incomplete recipe")
+        expect(status: 422, body: "{\"detail\": {\"code\": \"PDF_MULTIPAGE_UNSUPPORTED\"}}", input: .document, toBe: "Multi-page PDFs aren't supported yet. No recipe was saved. Use the recipe's source URL instead.", "PDF_MULTIPAGE_UNSUPPORTED")
+        expect(status: 422, body: "{\"detail\": {\"code\": \"PDF_PAGE_COUNT_FAILED\"}}", input: .document, toBe: "We couldn't verify this PDF's page count. No recipe was saved. Use an unencrypted single-page PDF or the recipe's source URL instead.", "PDF_PAGE_COUNT_FAILED")
         let unreadableImage = "Couldn\u{2019}t read a recipe from this image. Try a clearer photo."
         let unreadableDocument = "Couldn\u{2019}t read a recipe from this file. Try a clearer copy or a photo instead."
         let unreadableURL = "Couldn\u{2019}t find a recipe on this page."

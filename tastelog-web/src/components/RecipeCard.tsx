@@ -12,13 +12,11 @@
  * - This component does NOT persist anything.
  */
 
-import { useMemo, useState } from "react";
 
 // shadcn/ui
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
 export type IngredientLine = {
@@ -49,10 +47,11 @@ export type RecipeCardProps = {
   onChange: (next: RecipeCardValue) => void;
 
   onCancel: () => void;
-  onTryAgain: () => void;
-  onLooksGood: () => void;
+  onResetEdits: () => void;
+  onSave: () => void;
 
   disabled?: boolean;
+  saveDisabled?: boolean;
 };
 
 function nextId(prefix: string) {
@@ -62,25 +61,15 @@ function nextId(prefix: string) {
 export default function RecipeCard({
   heading = "Review Recipe",
   confidenceLabel,
+  saveDisabled,
   imagePreviewUrl,
   value,
   onChange,
   onCancel,
-  onTryAgain,
-  onLooksGood,
+  onResetEdits,
+  onSave,
   disabled,
 }: RecipeCardProps) {
-  // UI-only check state for ingredients (not persisted)
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-
-  const checkedCount = useMemo(() => {
-    let n = 0;
-    for (const ing of value.ingredients) {
-      if (checked[ing.id]) n += 1;
-    }
-    return n;
-  }, [checked, value.ingredients]);
-
   function setField<K extends keyof RecipeCardValue>(key: K, next: RecipeCardValue[K]) {
     onChange({ ...value, [key]: next });
   }
@@ -101,15 +90,6 @@ export default function RecipeCard({
       "ingredients",
       value.ingredients.filter((i) => i.id !== id)
     );
-    setChecked((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-  }
-
-  function toggleIngredient(id: string) {
-    setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   function updateStep(id: string, text: string) {
@@ -150,39 +130,18 @@ export default function RecipeCard({
 
       {/* Body */}
       <CardContent className="px-5 py-5">
-        <div className="grid gap-6 md:grid-cols-[240px_1fr]">
-          {/* Image Preview */}
-          <div className="space-y-2">
-            <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
-              <div className="aspect-[4/3]">
-                {imagePreviewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Recipe preview"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-neutral-500">
-                    Image Preview
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="text-[11px] text-neutral-500">
-              {checkedCount > 0
-                ? `${checkedCount} ingredient${checkedCount === 1 ? "" : "s"} checked (UI only)`
-                : " "}
-            </div>
-          </div>
-
+        <div className="space-y-6">
+          {imagePreviewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={imagePreviewUrl} alt="Recipe source" className="max-h-64 rounded-lg object-contain" />
+          ) : null}
           {/* Main Fields */}
           <div className="space-y-6">
             {/* Title */}
             <div className="grid gap-2 md:grid-cols-[80px_1fr] md:items-center">
               <div className="text-sm font-medium text-neutral-700">Title:</div>
               <Input
+                aria-label="Recipe title"
                 value={value.title}
                 onChange={(e) => setField("title", e.target.value)}
                 disabled={disabled}
@@ -247,16 +206,8 @@ export default function RecipeCard({
                     key={ing.id}
                     className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-white p-2"
                   >
-                    <div className="pt-1">
-                      <Checkbox
-                        checked={!!checked[ing.id]}
-                        onCheckedChange={() => toggleIngredient(ing.id)}
-                        disabled={disabled}
-                        aria-label="Check ingredient (UI only)"
-                      />
-                    </div>
-
                     <Input
+                      aria-label="Ingredient"
                       value={ing.text}
                       onChange={(e) => updateIngredient(ing.id, e.target.value)}
                       disabled={disabled}
@@ -303,6 +254,7 @@ export default function RecipeCard({
                     </div>
 
                     <Input
+                      aria-label={`Instruction ${idx + 1}`}
                       value={step.text}
                       onChange={(e) => updateStep(step.id, e.target.value)}
                       disabled={disabled}
@@ -338,17 +290,17 @@ export default function RecipeCard({
         </Button>
 
         <div className="flex items-center gap-3">
-          <Button type="button" variant="outline" onClick={onTryAgain} disabled={disabled}>
-            Try Again
+          <Button type="button" variant="outline" onClick={onResetEdits} disabled={disabled}>
+            Reset edits
           </Button>
 
           <Button
             type="button"
             className="bg-emerald-600 text-white hover:bg-emerald-600/90"
-            onClick={onLooksGood}
-            disabled={disabled}
+            onClick={onSave}
+            disabled={disabled || saveDisabled}
           >
-            Looks Good ✓
+            Save recipe
           </Button>
         </div>
       </CardFooter>

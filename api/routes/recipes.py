@@ -15,7 +15,10 @@ from pydantic import ValidationError
 from supabase import Client
 
 from api.core.anthropic_client import get_anthropic_client
+from api.core.extraction_review import IncompleteRecipeError
 from api.core.capture_wire import (
+    incomplete_http_exception,
+    image_http_exception,
     provider_http_exception,
     unreadable_http_exception,
 )
@@ -150,7 +153,7 @@ def capture_recipe_endpoint(
     Auth: Capture token ONLY (Bearer tl_cap_...). Supabase JWTs are NOT accepted.
     Requires Idempotency-Key header (UUID recommended).
 
-    Accepts JPEG, PNG, GIF, WEBP images or PDF files (max 10MB).
+    Accepts JPEG, PNG, GIF, WEBP images or verified single-page PDF files (max 10MB).
     Returns capture status with view URL.
     """
     # 1. Authenticate via capture token
@@ -317,6 +320,8 @@ def capture_recipe_endpoint(
 
         return response
 
+    except IncompleteRecipeError as e:
+        raise incomplete_http_exception(e.missing)
     except ProviderError as e:
         # PROVIDER-S1 (15.3.S-CF1b): provider-caused failure is an honest
         # service error, never blamed on the user's content. Must precede
@@ -334,9 +339,7 @@ def capture_recipe_endpoint(
         # Evidence-based content-level failure: the uploaded image itself
         # could not be decoded/processed.
         logger.warning(f"Capture failed: unreadable image ({e.code})")
-        raise unreadable_http_exception(
-            "We couldn\u2019t read a recipe from this image."
-        )
+        raise image_http_exception(e.code)
     except ParsingError as e:
         # Residual parse-layer failure that is neither typed provider nor
         # image-level: provider-output machinery, never blamed on the

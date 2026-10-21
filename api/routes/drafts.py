@@ -18,7 +18,10 @@ from pydantic import BaseModel, Field
 from supabase import Client
 
 from api.core.anthropic_client import get_anthropic_client
+from api.core.extraction_review import IncompleteRecipeError, require_recipe_content
 from api.core.capture_wire import (
+    incomplete_http_exception,
+    image_http_exception,
     provider_http_exception as _provider_http_exception,
     unreadable_http_exception as _unreadable_http_exception,
 )
@@ -482,6 +485,7 @@ async def capture_draft_endpoint(
     2. URL only (no images): delegate to URL capture pipeline.
     3. Neither: 400 error.
 
+    PDF uploads must each have exactly one verifiable page; otherwise the entire capture is rejected.
     Accepts 1-5 images via repeated ``image`` form fields.
     Optional ``url`` form field for source attribution or URL-only capture.
     Optional ``Idempotency-Key`` header: a retry with the same key and the
@@ -670,17 +674,15 @@ def _capture_images(
         raise _provider_http_exception(e)
     except ImageProcessingError as e:
         # Evidence-based content-level failure: the uploaded image itself
-        # could not be decoded/processed — the one case where "try a
-        # clearer photo" guidance is honest.
+        # could not be decoded/processed, or the PDF policy refused it.
+        # Keep PDF policy errors distinct from unreadable-photo guidance.
         if storage_keys:
             try:
                 db.storage.from_(_BUCKET_RECIPE_IMAGES).remove(storage_keys)
             except Exception:
                 logger.warning(f"Failed to cleanup storage: {storage_keys}")
         logger.warning(f"Capture failed: unreadable image ({e.code})")
-        raise _unreadable_http_exception(
-            "We couldn\u2019t read a recipe from this image."
-        )
+        raise image_http_exception(e.code)
     except ParsingError as e:
         # Residual parse-layer failure that is neither typed provider nor
         # image-level. PROVIDER-S1 converts all known sites to those two
@@ -776,6 +778,11 @@ async def confirm_draft_endpoint(
             if body.steps is not None:
                 overrides["steps"] = [step.model_dump() for step in body.steps]
 
+        require_recipe_content(
+            overrides.get("ingredients", draft_row.get("ingredients")),
+            overrides.get("steps", draft_row.get("steps")),
+        )
+
         # Server-side semantic comparison decides which original mappings
         # survive the user's edits (None = legacy draft, skip attach).
         surviving_mappings = compute_confirm_mappings(
@@ -816,6 +823,8 @@ async def confirm_draft_endpoint(
 
         return RecipeDetailResponse.model_validate(recipe_data)
 
+    except IncompleteRecipeError as e:
+        raise incomplete_http_exception(e.missing)
     except DraftNotFoundError:
         raise HTTPException(status_code=404, detail="Draft not found")
     except DraftExpiredError:

@@ -2,10 +2,11 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { hasSupabaseEnv } from "@/lib/supabase/env";
+import { loginRedirectPath } from "@/lib/supabase/loginRedirect";
 import { apiErrorMessage } from "@/lib/useApiErrorMessage";
 
 // shadcn/ui
@@ -15,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const nextPath = searchParams.get("next") || "/";
@@ -43,8 +43,7 @@ function LoginForm() {
         if (cancelled) return;
 
         if (data.session) {
-          router.replace(nextPath);
-          router.refresh();
+          window.location.replace(loginRedirectPath(nextPath, window.location.origin));
         }
       } finally {
         if (!cancelled) setCheckingSession(false);
@@ -55,7 +54,7 @@ function LoginForm() {
     return () => {
       cancelled = true;
     };
-  }, [router, nextPath]);
+  }, [nextPath]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,8 +80,8 @@ function LoginForm() {
         return;
       }
 
-      router.replace(nextPath);
-      router.refresh();
+      // Discard prefetched logged-out redirects after the session cookie changes.
+      window.location.replace(loginRedirectPath(nextPath, window.location.origin));
     } catch (err) {
       setErrorMsg(apiErrorMessage(err));
     } finally {

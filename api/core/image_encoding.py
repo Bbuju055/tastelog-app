@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import filetype
-from pdf2image import convert_from_path
+from pdf2image import convert_from_path, pdfinfo_from_path
 from PIL import Image
 
 from api.core.exceptions import ImageProcessingError
@@ -76,7 +76,19 @@ def _encode_pdf(
     pdf_dpi: int,
     jpeg_quality: int,
 ) -> tuple[str, str]:
-    """Encode PDF first page as JPEG with explicit temp directory cleanup."""
+    """Encode a verified single-page PDF; never silently discard later pages."""
+    try:
+        pages = pdfinfo_from_path(str(path), timeout=15).get("Pages")
+        if type(pages) is not int or pages < 1:
+            raise ValueError("Invalid PDF page count")
+    except Exception as e:
+        raise ImageProcessingError(
+            "Could not verify PDF page count", code="PDF_PAGE_COUNT_FAILED"
+        ) from e
+    if pages != 1:
+        raise ImageProcessingError(
+            "Only single-page PDFs are supported", code="PDF_MULTIPAGE_UNSUPPORTED"
+        )
     with TemporaryDirectory() as tmp_dir:
         try:
             images = convert_from_path(
@@ -85,6 +97,7 @@ def _encode_pdf(
                 last_page=1,
                 dpi=pdf_dpi,
                 output_folder=tmp_dir,
+                timeout=30,
             )
         except Exception as e:
             raise ImageProcessingError(

@@ -41,6 +41,10 @@ enum CaptureFailureMapper {
         inputType: CaptureShareInputType
     ) -> String {
         if let code = stableErrorCode(from: body) {
+            if code == "RECIPE_INCOMPLETE" { return "No recipe was saved. The capture is missing ingredients or instructions. Open Tastelog to capture and review the complete source." }
+            if code == "PDF_MULTIPAGE_UNSUPPORTED" { return "Multi-page PDFs aren't supported yet. No recipe was saved. Use the recipe's source URL instead." }
+            if code == "PDF_PAGE_COUNT_FAILED" { return "We couldn't verify this PDF's page count. No recipe was saved. Use an unencrypted single-page PDF or the recipe's source URL instead." }
+
             if code == "RECIPE_UNREADABLE" {
                 switch inputType {
                 case .image:

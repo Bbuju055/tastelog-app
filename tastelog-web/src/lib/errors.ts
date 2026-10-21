@@ -46,6 +46,13 @@ export function isApiError(err: unknown): err is ApiError {
  */
 export function formatFastApiDetail(detail: FastApiDetail): string | null {
   if (typeof detail === "string" && detail.trim()) return detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail) && detail.code === "RECIPE_INCOMPLETE") return "Add at least one ingredient and one instruction from the source before saving.";
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    switch (detail.code) {
+      case "PDF_MULTIPAGE_UNSUPPORTED": return "Multi-page PDFs aren't supported yet. No recipe was saved. Use the recipe's source URL instead.";
+      case "PDF_PAGE_COUNT_FAILED": return "We couldn't verify this PDF's page count. No recipe was saved. Use an unencrypted single-page PDF or the recipe's source URL instead.";
+    }
+  }
 
   if (Array.isArray(detail) && detail.length > 0) {
     // Common FastAPI 422 shape: [{ loc, msg, type }, ...]

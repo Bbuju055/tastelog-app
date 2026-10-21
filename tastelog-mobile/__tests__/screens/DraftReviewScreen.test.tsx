@@ -89,8 +89,8 @@ function makeDraft(overrides: Partial<DraftResponse> = {}): DraftResponse {
     prep_time: null,
     cook_time: null,
     confidence_score: 0.9,
-    ingredients: [],
-    steps: [],
+    ingredients: [{ name: "salt", raw_text: "salt", quantity: null, unit: null, prep: null }],
+    steps: [{ position: 1, instruction: "Mix." }],
     image_storage_keys: ["user/p1.jpg"],
     source_url: null,
     raw_model_json: null,
@@ -643,5 +643,26 @@ describe("DraftReviewScreen — confirmation success beat (15.2.2)", () => {
     expect(screen.queryByText("Review Draft", HIDDEN)).toBeNull();
     expect(screen.queryByDisplayValue("Test Draft", HIDDEN)).toBeNull();
     expect(screen.getByText("Loading draft…")).toBeTruthy();
+  });
+});
+
+describe("extraction uncertainty", () => {
+  it("blocks a high-confidence empty draft, allows correction, and blocks clearing the last instruction", () => {
+    mockUseDraftFn.mockReturnValue({ data: makeDraft({ confidence_score: 0.99, ingredients: [], steps: [] }), error: undefined, isLoading: false, refetch: jest.fn() });
+    renderWithTheme(<DraftReviewScreen />);
+    expect(screen.queryByText(/AI confidence/)).toBeNull();
+    expect(screen.getByText(/Missing instructions/)).toBeTruthy();
+    fireEvent.press(screen.getByText("Save Recipe"));
+    expect(mockConfirmMutation.mutate).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByText("Add ingredient"));
+    fireEvent.changeText(screen.getByPlaceholderText("Ingredient"), "1 tsp salt");
+    fireEvent.press(screen.getByText("Add instruction"));
+    fireEvent.changeText(screen.getByPlaceholderText("Step instruction"), "Mix.");
+    fireEvent.press(screen.getByText("Save Recipe"));
+    expect(mockConfirmMutation.mutate).toHaveBeenCalledWith(expect.objectContaining({ patch: expect.objectContaining({ ingredients: [expect.objectContaining({ name: "1 tsp salt", raw_text: "1 tsp salt" })], steps: [{ position: 1, instruction: "Mix." }] }) }), expect.anything());
+    mockConfirmMutation.mutate.mockClear();
+    fireEvent.changeText(screen.getByPlaceholderText("Step instruction"), "   ");
+    fireEvent.press(screen.getByText("Save Recipe"));
+    expect(mockConfirmMutation.mutate).not.toHaveBeenCalled();
   });
 });

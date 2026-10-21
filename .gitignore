@@ -44,3 +44,7 @@ SESSION_LOG.md
 
 # Python venv (scripts/test-api.sh creates api/.venv)
 .venv/
+
+# Local review records and generated browser evidence
+/.local/
+/output/

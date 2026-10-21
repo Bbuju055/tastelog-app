@@ -59,3 +59,32 @@ def unreadable_http_exception(message: str) -> HTTPException:
     return HTTPException(
         status_code=422, detail={"code": "RECIPE_UNREADABLE", "message": message}
     )
+
+
+PDF_MESSAGES = {
+    "PDF_MULTIPAGE_UNSUPPORTED": (
+        "Multi-page PDFs aren't supported yet. No recipe was saved. "
+        "Use the recipe's source URL instead."
+    ),
+    "PDF_PAGE_COUNT_FAILED": (
+        "We couldn't verify this PDF's page count. No recipe was saved. "
+        "Use an unencrypted single-page PDF or the recipe's source URL instead."
+    ),
+}
+
+
+def image_http_exception(code: str | None) -> HTTPException:
+    """Preserve PDF policy failures instead of blaming image legibility."""
+    if code in PDF_MESSAGES:
+        return HTTPException(
+            status_code=422, detail={"code": code, "message": PDF_MESSAGES[code]}
+        )
+    return unreadable_http_exception("We couldn’t read a recipe from this image.")
+
+
+def incomplete_http_exception(missing: list[str]) -> HTTPException:
+    return HTTPException(status_code=422, detail={
+        "code": "RECIPE_INCOMPLETE",
+        "message": "Add at least one ingredient and one instruction from the source before saving.",
+        "missing_sections": missing,
+    })

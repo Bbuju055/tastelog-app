@@ -267,3 +267,44 @@ class TestLegacyCaptureTransportPathsUnchanged:
         )
         resp = _post_capture(legacy_capture_client)
         assert resp.status_code == 429
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_legacy_pdf_rejection_real_pipeline(legacy_capture_client, monkeypatch, app, broken):
+    from pathlib import Path
+    from unittest.mock import Mock
+    import api.routes.recipes as routes
+    import api.core.recipes as core
+    from api.core.capture_wire import PDF_MESSAGES
+
+    client, db = Mock(), Mock()
+    monkeypatch.setattr(routes, "get_anthropic_client", lambda: client)
+    monkeypatch.setattr(core, "upload_image", lambda *a, **k: "uploaded.pdf")
+    app.dependency_overrides[get_db] = lambda: db
+    inputs = Path(__file__).parent / "eval/fidelity/inputs"
+    pdf = b"%PDF-1.4\nbroken" if broken else (inputs / "french_onion_soup.pdf").read_bytes()
+    response = legacy_capture_client.post("/api/recipes/capture", headers={
+        "Authorization": "Bearer tl_cap_" + "a" * 32, "Idempotency-Key": str(uuid4()),
+    }, files={"image": ("recipe.pdf", pdf, "application/pdf")})
+    code = "PDF_PAGE_COUNT_FAILED" if broken else "PDF_MULTIPAGE_UNSUPPORTED"
+    assert response.status_code == 422
+    assert response.json()["detail"] == {"code": code, "message": PDF_MESSAGES[code]}
+    client.messages.create.assert_not_called()
+    db.table.assert_not_called()
+    db.storage.from_().remove.assert_called_once_with(["uploaded.pdf"])
+
+@pytest.mark.parametrize("missing", ["ingredients", "steps"])
+def test_legacy_missing_content_never_saves(legacy_capture_client, monkeypatch, app, missing):
+    from unittest.mock import Mock
+    import api.core.recipes as core
+    db = Mock()
+    app.dependency_overrides[get_db] = lambda: db
+    parsed = {"title": "Incomplete", "confidence": 0.99,
+              "ingredients": [{"name": "salt"}], "steps": [{"instruction": "Mix."}]}
+    parsed[missing] = []
+    monkeypatch.setattr(core, "upload_image", lambda *a, **k: "asset")
+    monkeypatch.setattr(core, "parse_recipe_image", lambda *a, **k: parsed)
+    response = _post_capture(legacy_capture_client)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "RECIPE_INCOMPLETE"
+    db.table.assert_not_called()
+    db.storage.from_().remove.assert_called_once_with(["asset"])

@@ -3,10 +3,10 @@
 Nine cases: seven PDFs committed under inputs/ and two live URLs, one with
 JSON-LD and one without. Each case has a hand-written expected answer under
 expected/ that covers the WHOLE source recipe, including anything on a PDF's
-second page. The capture pipeline renders page 1 only
-(api/core/image_encoding.py), so page-2 content is scored as omissions and
-labelled by page: a reader can separate the pipeline's page limit from the
-model's misses.
+second page. The current pipeline rejects multi-page PDFs before model calls.
+Committed October 18 results predate that guard: they rendered page 1 only,
+with page-2 content scored as omissions. Offline rescoring preserves that
+historical evidence; it does not evaluate the current input policy.
 
 Two arms, same model, same code paths, same validators:
 
